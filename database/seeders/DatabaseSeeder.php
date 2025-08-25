@@ -13,11 +13,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $customer_seeder = new CustomerSeeder();
-        $customer_seeder->run();
-
-        $loan_seeder = new LoanSeeder();
-        $loan_seeder->run();
+        $this->call(CustomerSeeder::class);
+        $this->call(LoanSeeder::class);
 
         User::factory()->create([
             'name' => 'Test User',
