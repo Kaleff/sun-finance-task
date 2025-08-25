@@ -16,11 +16,18 @@ return new class extends Migration
             $table->string('payer_name');
             $table->string('payer_surname');
             $table->decimal('amount', 10, 2);
-            $table->string('ssn'); // nationalSecurityNumber in csv file
-            $table->string('loan_reference'); // Description column in csv file
-            $table->string('payment_reference')->unique();
+            $table->string('ssn')->nullable(); // nationalSecurityNumber in csv file, not present in API
+            $table->string('loan_reference'); // Description column in csv file and api
+            $table->string('payment_reference')->unique(); // RefId in api, paymentReference in csv file
             $table->enum('state', ['ASSIGNED', 'PARTIALLY_ASSIGNED', 'REJECTED']);
-            $table->timestamps();
+            $table->string('rejection_reason')->nullable(); // Reason for rejection
+            $table->enum('source', ['api', 'csv']);
+            $table->dateTimeTz('payment_date');
+        });
+
+        Schema::table('payments', function (Blueprint $table) {
+            $table->foreign('loan_reference')->references('reference')->on('loans')->onDelete('cascade');
+            $table->index(['ssn', 'loan_reference']);
         });
     }
 
@@ -29,6 +36,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('payments', function (Blueprint $table) {
+            $table->dropForeign(['loan_reference']);
+            $table->dropIndex(['ssn', 'loan_reference']);
+        });
         Schema::dropIfExists('payments');
     }
 };

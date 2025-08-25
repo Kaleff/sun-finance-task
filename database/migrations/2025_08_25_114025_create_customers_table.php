@@ -20,6 +20,10 @@ return new class extends Migration
             $table->string('phone')->unique()->nullable();
             $table->timestamps();
         });
+
+        Schema::table('customers', function (Blueprint $table) {
+            $table->primary('id');
+        });
     }
 
     /**

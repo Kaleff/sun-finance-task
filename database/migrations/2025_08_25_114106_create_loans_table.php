@@ -21,6 +21,11 @@ return new class extends Migration
             $table->decimal('amount_paid', 10, 2)->default(0);
             $table->timestamps();
         });
+
+        Schema::table('loans', function (Blueprint $table) {
+            $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
+            $table->index(['customer_id', 'reference']);
+        });
     }
 
     /**
@@ -28,6 +33,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('loans', function (Blueprint $table) {
+            $table->dropForeign(['customer_id']);
+            $table->dropIndex(['customer_id', 'reference']);
+        });
         Schema::dropIfExists('loans');
     }
 };
