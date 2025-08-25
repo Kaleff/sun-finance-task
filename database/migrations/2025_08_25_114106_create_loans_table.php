@@ -24,7 +24,7 @@ return new class extends Migration
 
         Schema::table('loans', function (Blueprint $table) {
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
-            $table->index(['customer_id', 'reference']);
+            $table->index(['customer_id', 'reference', 'state']);
         });
     }
 
@@ -35,7 +35,7 @@ return new class extends Migration
     {
         Schema::table('loans', function (Blueprint $table) {
             $table->dropForeign(['customer_id']);
-            $table->dropIndex(['customer_id', 'reference']);
+            $table->dropIndex(['customer_id', 'reference', 'state']);
         });
         Schema::dropIfExists('loans');
     }
