@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('payer_name');
             $table->string('payer_surname');
             $table->decimal('amount', 10, 2);
-            $table->string('ssn')->nullable(); // nationalSecurityNumber in csv file, not present in API
+            $table->string('ssn')->nullable(); // nationalSecurityNumber and nullable in csv file, not present in API
             $table->string('loan_reference'); // Description column in csv file and api
             $table->string('payment_reference')->unique(); // RefId in api, paymentReference in csv file
             $table->enum('state', ['ASSIGNED', 'PARTIALLY_ASSIGNED', 'REJECTED']);
