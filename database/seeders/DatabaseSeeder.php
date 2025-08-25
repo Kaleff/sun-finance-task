@@ -13,7 +13,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $customer_seeder = new CustomerSeeder();
+        $customer_seeder->run();
+
+        $loan_seeder = new LoanSeeder();
+        $loan_seeder->run();
 
         User::factory()->create([
             'name' => 'Test User',
