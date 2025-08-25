@@ -14,11 +14,11 @@ return new class extends Migration
         Schema::create('loans', function (Blueprint $table) {
             $table->string('id');
             $table->string('customer_id');
-            $table->string('reference');
-            $table->enum('state', ['ACTIVE', 'PAID']);
+            $table->string('reference')->unique();
+            $table->enum('state', ['ACTIVE', 'PAID'])->default('ACTIVE');
             $table->decimal('amount_issued', 10, 2);
             $table->decimal('amount_to_pay', 10, 2);
-            $table->decimal('amount_paid', 10, 2)->default(0);
+            $table->decimal('amount_paid', 10, 2)->default(0.00);
             $table->timestamps();
         });
 
