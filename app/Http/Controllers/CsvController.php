@@ -28,10 +28,11 @@ class CsvController extends Controller
             if (in_array($payment['payment_reference'], $batch_payment_references)) {
                 $payment['state'] = 'REJECTED';
                 $payment['code'] = $this->error_codes['payment_reference'];
-                $duplicate_in_batch = true;
+                // Skip the iteration if the payment is a batch duplicate
+                $table_contents[] = $payment;
+                continue;
             } else {
                 $batch_payment_references[] = $payment['payment_reference'];
-                $duplicate_in_batch = false;
             }
 
             // If the payment_date is in YYYYMMDDHHMMSS format, convert it to Carbon
@@ -52,7 +53,7 @@ class CsvController extends Controller
                     ? 'payment_reference'
                     : array_key_first($validator->errors()->messages());
                 $payment['code'] = $this->error_codes[$error_column] ?? 99; // 99 for unknown error
-            } elseif (!$duplicate_in_batch) {
+            } else {
                 $loan = Loan::where('reference', $payment['description'])->first();
                 $loan->amount_paid += $payment['amount'];
                 if($loan->amount_paid > $loan->amount_to_pay) {
