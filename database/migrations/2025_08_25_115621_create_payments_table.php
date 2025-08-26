@@ -22,7 +22,7 @@ return new class extends Migration
             $table->enum('state', ['ASSIGNED', 'PARTIALLY_ASSIGNED', 'REJECTED']);
             $table->string('rejection_reason')->nullable(); // Reason for rejection
             $table->enum('source', ['api', 'csv']);
-            $table->dateTimeTz('payment_date');
+            $table->dateTime('payment_date');
         });
 
         Schema::table('payments', function (Blueprint $table) {
