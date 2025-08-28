@@ -27,7 +27,7 @@ return new class extends Migration
 
         Schema::table('payments', function (Blueprint $table) {
             $table->foreign('loan_reference')->references('reference')->on('loans')->onDelete('cascade');
-            $table->index(['ssn', 'loan_reference', 'state', 'source']);
+            $table->index(['loan_reference', 'payment_reference']);
         });
     }
 
@@ -38,7 +38,7 @@ return new class extends Migration
     {
         Schema::table('payments', function (Blueprint $table) {
             $table->dropForeign(['loan_reference']);
-            $table->dropIndex(['ssn', 'loan_reference', 'state', 'source']);
+            $table->dropIndex(['loan_reference', 'payment_reference']);
         });
         Schema::dropIfExists('payments');
     }
