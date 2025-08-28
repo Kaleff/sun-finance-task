@@ -18,6 +18,11 @@ return new class extends Migration
             $table->enum('status', ['PENDING', 'COMPLETED', 'FAILED']);
             $table->timestamps();
         });
+
+        Schema::table('refunds', function (Blueprint $table) {
+            $table->foreign('payment_reference')->references('payment_reference')->on('payments')->onDelete('cascade');
+            $table->index(['payment_reference', 'status']);
+        });
     }
 
     /**
@@ -25,6 +30,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('refunds', function (Blueprint $table) {
+            $table->dropForeign(['payment_reference']);
+            $table->dropIndex(['payment_reference', 'status']);
+        });
         Schema::dropIfExists('refunds');
     }
 };
