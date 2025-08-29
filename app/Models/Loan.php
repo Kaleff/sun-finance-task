@@ -6,18 +6,21 @@ use Illuminate\Database\Eloquent\Model;
 
 class Loan extends Model
 {
-    public static const STATE_ACTIVE = 'ACTIVE';
-    public static const STATE_PAID = 'PAID';
+    public const STATE_ACTIVE = 'ACTIVE';
+    public const STATE_PAID = 'PAID';
 
-    public static const LOANS_TABLE = 'loans';
+    public const LOANS_TABLE = 'loans';
 
-    public static const COLUMN_ID = 'id';
-    public static const COLUMN_CUSTOMER_ID = 'customer_id';
-    public static const COLUMN_REFERENCE = 'reference';
-    public static const COLUMN_STATE = 'state';
-    public static const COLUMN_AMOUNT_ISSUED = 'amount_issued';
-    public static const COLUMN_AMOUNT_TO_PAY = 'amount_to_pay';
-    public static const COLUMN_AMOUNT_PAID = 'amount_paid';
+    public const COLUMN_ID = 'id';
+    public const COLUMN_CUSTOMER_ID = 'customer_id';
+    public const COLUMN_REFERENCE = 'reference';
+    public const COLUMN_STATE = 'state';
+    public const COLUMN_AMOUNT_ISSUED = 'amount_issued';
+    public const COLUMN_AMOUNT_TO_PAY = 'amount_to_pay';
+    public const COLUMN_AMOUNT_PAID = 'amount_paid';
+    // Timestamps
+    public const COLUMN_CREATED_AT = 'created_at';
+    public const COLUMN_UPDATED_AT = 'updated_at';
 
     /**
      * Get the attributes that should be cast.
@@ -27,13 +30,13 @@ class Loan extends Model
     protected function casts(): array
     {
         return [
-            'id' => 'string',
+            self::COLUMN_ID => 'string',
         ];
     }
 
     protected $fillable = [
-        'amount_paid',
-        'state',
-        'updated_at',
+        self::COLUMN_AMOUNT_PAID,
+        self::COLUMN_STATE,
+        self::COLUMN_UPDATED_AT,
     ];
 }
