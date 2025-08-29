@@ -270,7 +270,7 @@ class PaymentImportService
 
         return([
             'payments' => $payments,
-            'loan_updates' => array_values($loan_updates),
+            'loan_updates' => $loan_updates,
             'refunds' => $refunds
         ]);
     }
@@ -305,7 +305,7 @@ class PaymentImportService
                 }
                 if (!empty($loan_updates)) {
                     Loan::upsert(
-                        $loan_updates,
+                        array_values($loan_updates),
                         uniqueBy: [Loan::COLUMN_ID],
                         update: [Loan::COLUMN_AMOUNT_PAID, Loan::COLUMN_STATE, Loan::COLUMN_UPDATED_AT]
                     );
