@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Customer;
 use App\Models\Loan;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -12,20 +13,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('loans', function (Blueprint $table) {
-            $table->string('id');
-            $table->string('customer_id');
-            $table->string('reference')->unique();
-            $table->enum('state', [Loan::STATE_ACTIVE, Loan::STATE_PAID])->default(Loan::STATE_ACTIVE);
-            $table->decimal('amount_issued', 10, 2);
-            $table->decimal('amount_to_pay', 10, 2);
-            $table->decimal('amount_paid', 10, 2)->default(0.00);
+        Schema::create(Loan::LOANS_TABLE, function (Blueprint $table) {
+            $table->string(Loan::COLUMN_ID);
+            $table->string(Loan::COLUMN_CUSTOMER_ID);
+            $table->string(Loan::COLUMN_REFERENCE)->unique();
+            $table->enum(Loan::COLUMN_STATE, [Loan::STATE_ACTIVE, Loan::STATE_PAID])->default(Loan::STATE_ACTIVE);
+            $table->decimal(Loan::COLUMN_AMOUNT_ISSUED, 10, 2);
+            $table->decimal(Loan::COLUMN_AMOUNT_TO_PAY, 10, 2);
+            $table->decimal(Loan::COLUMN_AMOUNT_PAID, 10, 2)->default(0.00);
             $table->timestamps();
         });
 
-        Schema::table('loans', function (Blueprint $table) {
-            $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
-            $table->index(['customer_id', 'reference', 'state']);
+        Schema::table(Loan::LOANS_TABLE, function (Blueprint $table) {
+            $table->foreign(Loan::COLUMN_CUSTOMER_ID)->references(Customer::COLUMN_ID)->on(Customer::CUSTOMERS_TABLE)->onDelete('cascade');
+            $table->index([Loan::COLUMN_CUSTOMER_ID, Loan::COLUMN_REFERENCE, Loan::COLUMN_STATE]);
         });
     }
 
@@ -34,10 +35,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('loans', function (Blueprint $table) {
-            $table->dropForeign(['customer_id']);
-            $table->dropIndex(['customer_id', 'reference', 'state']);
+        Schema::table(Loan::LOANS_TABLE, function (Blueprint $table) {
+            $table->dropForeign([Loan::COLUMN_CUSTOMER_ID]);
+            $table->dropIndex([Loan::COLUMN_CUSTOMER_ID, Loan::COLUMN_REFERENCE, Loan::COLUMN_STATE]);
         });
-        Schema::dropIfExists('loans');
+        Schema::dropIfExists(Loan::LOANS_TABLE);
     }
 };
