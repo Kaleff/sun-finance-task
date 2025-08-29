@@ -15,25 +15,17 @@ class PaymentImportService
 {
     private const CHUNK_SIZE = 1000;
     private const PAYMENT_FILE_PATH = 'external/payments.csv';
+
     // CSV columns to DB mapping
     private const COLUMN_MAPPING = [
-        'paymentDate' => 'payment_date',
-        'payerName' => 'payer_name',
-        'payerSurname' => 'payer_surname',
-        'amount' => 'amount',
-        'nationalSecurityNumber' => 'ssn',
-        'description' => 'loan_reference',
-        'paymentReference' => 'payment_reference',
+        'paymentDate' => Payment::COLUMN_PAYMENT_DATE,
+        'payerName' => Payment::COLUMN_PAYER_NAME,
+        'payerSurname' => Payment::COLUMN_PAYER_SURNAME,
+        'amount' => Payment::COLUMN_AMOUNT,
+        'nationalSecurityNumber' => Payment::COLUMN_SSN,
+        'description' => Payment::COLUMN_LOAN_REFERENCE,
+        'paymentReference' => Payment::COLUMN_PAYMENT_REFERENCE,
     ];
-
-    // Use class constants for error codes
-    private const PAYMENT_SUCCESS = 0;
-    private const ERROR_DUPLICATE = 1;
-    private const ERROR_AMOUNT = 2;
-    private const ERROR_PAYMENT_DATE = 3;
-    private const ERROR_LOAN_REFERENCE = 4;
-    private const ERROR_ALREADY_PAID = 5;
-    private const ERROR_UNKNOWN = 99;
 
     /**
      * Import payments from a CSV file in chunks.
@@ -109,13 +101,13 @@ class PaymentImportService
                         continue;
                     }
                     // Accept both date and YYYYMMDDHHMMSS formats
-                    if (preg_match('/^\d{14}$/', $row['payment_date'])) {
-                        $row['payment_date'] = Carbon::createFromFormat('YmdHis', $row['payment_date'])->toDateTimeString();
+                    if (preg_match('/^\d{14}$/', $row[Payment::COLUMN_PAYMENT_DATE])) {
+                        $row[Payment::COLUMN_PAYMENT_DATE] = Carbon::createFromFormat('YmdHis', $row[Payment::COLUMN_PAYMENT_DATE])->toDateTimeString();
                     } else {
                         try {
-                            $row['payment_date'] = Carbon::parse($row['payment_date'])->toDateTimeString();
+                            $row[Payment::COLUMN_PAYMENT_DATE] = Carbon::parse($row[Payment::COLUMN_PAYMENT_DATE])->toDateTimeString();
                         } catch (\Exception $e) {
-                            $row['payment_date'] = null;
+                            $row[Payment::COLUMN_PAYMENT_DATE] = null;
                         }
                     }
                     $chunk[] = $row;
@@ -135,7 +127,7 @@ class PaymentImportService
      */
     private function extractLoanReferences(array $payments): array
     {
-        return collect($payments)->pluck('loan_reference')->unique()->values()->all();
+        return collect($payments)->pluck(Payment::COLUMN_LOAN_REFERENCE)->unique()->values()->all();
     }
 
     /**
@@ -143,7 +135,7 @@ class PaymentImportService
      */
     private function extractPaymentReferences(array $payments): array
     {
-        return collect($payments)->pluck('payment_reference')->unique()->values()->all();
+        return collect($payments)->pluck(Payment::COLUMN_PAYMENT_REFERENCE)->unique()->values()->all();
     }
 
     /**
@@ -151,10 +143,10 @@ class PaymentImportService
      */
     private function fetchActiveLoans(array $loan_references)
     {
-        return Loan::whereIn('reference', $loan_references)
-            ->where('state', 'ACTIVE')
+        return Loan::whereIn(Loan::COLUMN_REFERENCE, $loan_references)
+            ->where(Loan::COLUMN_STATE, Loan::STATE_ACTIVE)
             ->get()
-            ->keyBy('reference');
+            ->keyBy(Loan::COLUMN_REFERENCE);
     }
 
     /**
@@ -162,8 +154,8 @@ class PaymentImportService
      */
     private function fetchExistingPaymentReferences(array $payment_references): array
     {
-        return Payment::whereIn('payment_reference', $payment_references)
-            ->pluck('payment_reference')
+        return Payment::whereIn(Payment::COLUMN_PAYMENT_REFERENCE, $payment_references)
+            ->pluck(Payment::COLUMN_PAYMENT_REFERENCE)
             ->all();
     }
 
@@ -173,14 +165,14 @@ class PaymentImportService
     private function validatePayments(array $payments, array $active_loan_references, array $existing_payment_references): array
     {
         $validator = Validator::make($payments, [
-            '*.payment_date' => 'required|date',
-            '*.amount' => 'required|numeric|min:0.01',
-            '*.loan_reference' => [
+            '*.' . Payment::COLUMN_PAYMENT_DATE => 'required|date',
+            '*.' . Payment::COLUMN_AMOUNT => 'required|numeric|min:0.01',
+            '*.' . Payment::COLUMN_LOAN_REFERENCE => [
                 'required',
                 'string',
                 Rule::in($active_loan_references),
             ],
-            '*.payment_reference' => [
+            "*." . Payment::COLUMN_PAYMENT_REFERENCE => [
                 'required',
                 'string',
                 Rule::notIn($existing_payment_references),
@@ -191,15 +183,15 @@ class PaymentImportService
             $errors = $validator->errors()->messages();
             foreach ($errors as $key => $messages) {
                 [$index, $field] = explode('.', $key);
-                $payments[$index]['state'] = Payment::STATE_REJECTED;
-                $is_duplicate = isset($payments[$index]['code']) && $payments[$index]['code'] === self::ERROR_DUPLICATE;
+                $payments[$index][Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
+                $is_duplicate = isset($payments[$index][Payment::COLUMN_CODE]) && $payments[$index][Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE;
                 if(!$is_duplicate) {
-                    $payments[$index]['code'] = match ($field) {
-                        'payment_reference' => self::ERROR_DUPLICATE,
-                        'amount' => self::ERROR_AMOUNT,
-                        'payment_date' => self::ERROR_PAYMENT_DATE,
-                        'loan_reference' => self::ERROR_LOAN_REFERENCE,
-                        default => self::ERROR_UNKNOWN,
+                    $payments[$index][Payment::COLUMN_CODE] = match ($field) {
+                        Payment::COLUMN_PAYMENT_REFERENCE => Payment::CODE_ERROR_DUPLICATE,
+                        Payment::COLUMN_AMOUNT => Payment::CODE_ERROR_AMOUNT,
+                        Payment::COLUMN_PAYMENT_DATE => Payment::CODE_ERROR_PAYMENT_DATE,
+                        Payment::COLUMN_LOAN_REFERENCE => Payment::CODE_ERROR_LOAN_REFERENCE,
+                        default => Payment::CODE_ERROR_UNKNOWN,
                     };
                 }
             }
@@ -219,56 +211,56 @@ class PaymentImportService
         foreach ($payments as &$payment) {
             // Batch duplicate check
             if (
-                isset($batch_payment_references[$payment['payment_reference']]) ||
-                (isset($payment['code']) && $payment['code'] === self::ERROR_DUPLICATE)
+                isset($batch_payment_references[$payment[Payment::COLUMN_PAYMENT_REFERENCE]]) ||
+                (isset($payment[Payment::COLUMN_CODE]) && $payment[Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE)
             ) {
-                $payment['state'] = Payment::STATE_REJECTED;
-                $payment['code'] = self::ERROR_DUPLICATE;
-                Log::warning("Duplicate payment reference found in batch: {$payment['payment_reference']}, skipping.");
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
+                $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_DUPLICATE;
+                Log::warning("Duplicate payment reference found in batch: ." . $payment[Payment::COLUMN_PAYMENT_REFERENCE] . ", skipping.");
                 continue;
             } else {
-                $batch_payment_references[$payment['payment_reference']] = true;
+                $batch_payment_references[$payment[Payment::COLUMN_PAYMENT_REFERENCE]] = true;
             }
 
             // Skip already rejected payments
-            if (isset($payment['state']) && $payment['state'] === Payment::STATE_REJECTED) {
+            if (isset($payment[Payment::COLUMN_STATE]) && $payment[Payment::COLUMN_STATE] === Payment::STATE_REJECTED) {
                 continue;
             }
 
             // Defensive: Check loan exists
-            if (!isset($loans[$payment['loan_reference']])) {
-                $payment['state'] = Payment::STATE_REJECTED;
-                $payment['code'] = self::ERROR_LOAN_REFERENCE;
+            if (!isset($loans[$payment[Payment::COLUMN_LOAN_REFERENCE]])) {
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
+                $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_LOAN_REFERENCE;
                 continue;
             }
 
-            $loan = $loans[$payment['loan_reference']];
+            $loan = $loans[$payment[Payment::COLUMN_LOAN_REFERENCE]];
 
             if ($loan->state === Loan::STATE_PAID) {
-                $payment['state'] = Payment::STATE_REJECTED;
-                $payment['code'] = self::ERROR_ALREADY_PAID;
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
+                $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_ALREADY_PAID;
             } else {
-                $loan->amount_paid += $payment['amount'];
+                $loan->amount_paid += $payment[Payment::COLUMN_AMOUNT];
                 if ($loan->amount_paid > $loan->amount_to_pay) {
-                    $payment['state'] = Payment::STATE_PARTIALLY_ASSIGNED;
+                    $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
                     $loan->state = Loan::STATE_PAID;
                     $refunds[] = [
-                        'payment_reference' => $payment['payment_reference'],
-                        'amount' => $loan->amount_paid - $loan->amount_to_pay,
-                        'status' => Refund::STATUS_PENDING
+                        Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
+                        Refund::COLUMN_AMOUNT => $loan->amount_paid - $loan->amount_to_pay,
+                        Refund::COLUMN_STATUS => Refund::STATUS_PENDING
                     ];
                 } else {
-                    $payment['state'] = Payment::STATE_ASSIGNED;
+                    $payment[Payment::COLUMN_STATE] = Payment::STATE_ASSIGNED;
                     if ($loan->amount_paid == $loan->amount_to_pay) {
                         $loan->state = Loan::STATE_PAID;
                     }
                 }
                 $loan_updates[$loan->id] = [
-                    'amount_paid' => $loan->amount_paid,
-                    'state' => $loan->state,
-                    'updated_at' => now(),
+                    Loan::COLUMN_AMOUNT_PAID => $loan->amount_paid,
+                    Loan::COLUMN_STATE => $loan->state,
+                    Loan::COLUMN_UPDATED_AT => now(),
                 ];
-                $payment['code'] = $this::PAYMENT_SUCCESS;
+                $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
             }
         }
         // Break the reference created by foreach loop for safety purposes
@@ -285,13 +277,19 @@ class PaymentImportService
     {
         // Add 'source' => 'csv' to each payment before insert
         $payments = array_map(function ($payment) {
-            $payment['source'] = Payment::SOURCE_CSV;
+            $payment[Payment::COLUMN_SOURCE] = Payment::SOURCE_CSV;
             return $payment;
         }, $payments);
 
+        dd([
+            'payments' => $payments,
+            'loan_updates' => $loan_updates,
+            'refunds' => $refunds
+        ]);
+
         // Filter out duplicates from being written into a database
         $payments = array_filter($payments, function ($payment) {
-            return isset($payment['code']) && $payment['code'] !== self::ERROR_DUPLICATE;
+            return isset($payment[Payment::COLUMN_CODE]) && $payment[Payment::COLUMN_CODE] !== Payment::CODE_ERROR_DUPLICATE;
         });
 
         DB::transaction(function () use ($payments, $loan_updates, $refunds) {
@@ -299,7 +297,7 @@ class PaymentImportService
                 Payment::insert($payments);
             }
             if (!empty($loan_updates)) {
-                Loan::upsert($loan_updates, ['id'], ['amount_paid', 'status', 'updated_at']);
+                Loan::upsert($loan_updates, [Loan::COLUMN_ID], [Loan::COLUMN_AMOUNT_PAID, Loan::COLUMN_STATE, Loan::COLUMN_UPDATED_AT]);
             }
             if (!empty($refunds)) {
                 Refund::insert($refunds);
