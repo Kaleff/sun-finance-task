@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('payment_reference');
             $table->decimal('amount', 10, 2);
-            $table->enum('status', ['PENDING', 'COMPLETED', 'FAILED']);
+            $table->enum('status', ['PENDING', 'COMPLETED', 'FAILED'])->default('PENDING');
             $table->timestamps();
         });
 

@@ -20,9 +20,9 @@ return new class extends Migration
             $table->string('loan_reference'); // Description column in csv file and api
             $table->string('payment_reference')->unique(); // RefId in api, paymentReference in csv file
             $table->enum('state', ['ASSIGNED', 'PARTIALLY_ASSIGNED', 'REJECTED']);
-            $table->string('rejection_reason')->nullable(); // Reason for rejection
+            $table->integer('code')->nullable(); // 0 for success, everything else is an error
             $table->enum('source', ['api', 'csv']);
-            $table->dateTime('payment_date');
+            $table->dateTimeTz('payment_date');
         });
 
         Schema::table('payments', function (Blueprint $table) {
