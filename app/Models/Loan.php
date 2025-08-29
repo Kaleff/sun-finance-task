@@ -39,4 +39,8 @@ class Loan extends Model
         self::COLUMN_STATE,
         self::COLUMN_UPDATED_AT,
     ];
+
+    protected $primaryKey = self::COLUMN_ID;
+    public $incrementing = false;
+    protected $keyType = 'string';
 }

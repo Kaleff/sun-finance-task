@@ -26,4 +26,8 @@ class Customer extends Model
         self::COLUMN_PHONE
     ];
     */
+
+    protected $primaryKey = self::COLUMN_ID;
+    public $incrementing = false;
+    protected $keyType = 'string';
 }
