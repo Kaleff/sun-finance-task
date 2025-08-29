@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Refund;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,7 +16,8 @@ return new class extends Migration
             $table->id();
             $table->string('payment_reference');
             $table->decimal('amount', 10, 2);
-            $table->enum('status', ['PENDING', 'COMPLETED', 'FAILED'])->default('PENDING');
+            $table->enum('status', [Refund::STATUS_PENDING, Refund::STATUS_COMPLETED, Refund::STATUS_FAILED])
+                ->default(Refund::STATUS_PENDING);
             $table->timestamps();
         });
 

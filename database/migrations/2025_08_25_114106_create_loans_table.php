@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Loan;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,7 +16,7 @@ return new class extends Migration
             $table->string('id');
             $table->string('customer_id');
             $table->string('reference')->unique();
-            $table->enum('state', ['ACTIVE', 'PAID'])->default('ACTIVE');
+            $table->enum('state', [Loan::STATE_ACTIVE, Loan::STATE_PAID])->default(Loan::STATE_ACTIVE);
             $table->decimal('amount_issued', 10, 2);
             $table->decimal('amount_to_pay', 10, 2);
             $table->decimal('amount_paid', 10, 2)->default(0.00);

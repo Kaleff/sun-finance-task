@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Payment;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -19,9 +20,9 @@ return new class extends Migration
             $table->string('ssn')->nullable(); // nationalSecurityNumber and nullable in csv file, not present in API
             $table->string('loan_reference'); // Description column in csv file and api
             $table->string('payment_reference')->unique(); // RefId in api, paymentReference in csv file
-            $table->enum('state', ['ASSIGNED', 'PARTIALLY_ASSIGNED', 'REJECTED']);
+            $table->enum('state', [Payment::STATE_ASSIGNED, Payment::STATE_PARTIALLY_ASSIGNED, Payment::STATE_REJECTED]);
             $table->integer('code')->nullable(); // 0 for success, everything else is an error
-            $table->enum('source', ['api', 'csv']);
+            $table->enum('source', [Payment::SOURCE_API, Payment::SOURCE_CSV]);
             $table->dateTimeTz('payment_date');
         });
 
