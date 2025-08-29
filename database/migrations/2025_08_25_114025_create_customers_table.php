@@ -13,17 +13,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create(Customer::CUSTOMERS_TABLE, function (Blueprint $table) {
-            $table->string(Customer::COLUMN_ID);
+            $table->uuid(Customer::COLUMN_ID)->primary();
             $table->string(Customer::COLUMN_FIRST_NAME);
             $table->string(Customer::COLUMN_LAST_NAME);
             $table->string(Customer::COLUMN_SSN);
             $table->string(Customer::COLUMN_EMAIL)->unique()->nullable();
             $table->string(Customer::COLUMN_PHONE)->unique()->nullable();
             $table->timestamps();
-        });
-
-        Schema::table(Customer::CUSTOMERS_TABLE, function (Blueprint $table) {
-            $table->primary(Customer::COLUMN_ID);
         });
         // I didn't create indexes for the other columns since the data is not really requested yet.
     }

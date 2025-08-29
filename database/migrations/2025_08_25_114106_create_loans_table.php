@@ -14,8 +14,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create(Loan::LOANS_TABLE, function (Blueprint $table) {
-            $table->string(Loan::COLUMN_ID);
-            $table->string(Loan::COLUMN_CUSTOMER_ID);
+            $table->uuid(Loan::COLUMN_ID)->primary()->unique();
+            $table->foreignUuid(Loan::COLUMN_CUSTOMER_ID);
             $table->string(Loan::COLUMN_REFERENCE)->unique();
             $table->enum(Loan::COLUMN_STATE, [Loan::STATE_ACTIVE, Loan::STATE_PAID])->default(Loan::STATE_ACTIVE);
             $table->decimal(Loan::COLUMN_AMOUNT_ISSUED, 10, 2);
