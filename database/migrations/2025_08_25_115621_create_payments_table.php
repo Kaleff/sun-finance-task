@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Loan;
 use App\Models\Payment;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -27,7 +28,7 @@ return new class extends Migration
         });
 
         Schema::table(Payment::PAYMENTS_TABLE, function (Blueprint $table) {
-            $table->foreign(Payment::COLUMN_LOAN_REFERENCE)->references('reference')->on('loans')->onDelete('cascade');
+            $table->foreign(Payment::COLUMN_LOAN_REFERENCE)->references(Loan::COLUMN_REFERENCE)->on(Loan::LOANS_TABLE)->onDelete('cascade');
             $table->index([Payment::COLUMN_LOAN_REFERENCE, Payment::COLUMN_PAYMENT_REFERENCE]);
         });
     }
