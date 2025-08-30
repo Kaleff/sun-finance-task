@@ -6,6 +6,7 @@ use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\Refund;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -58,6 +59,14 @@ class PaymentImportService
                 refunds: $refunds
             );
         }
+    }
+
+    /**
+     * Get payments by date.
+     */
+    public function getPaymentsByDate(string $date): array
+    {
+        return Payment::whereDate('payment_date', $date)->get()->toArray();
     }
 
     /**

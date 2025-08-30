@@ -4,6 +4,7 @@ use App\Http\Controllers\CsvController;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Services\PaymentImportService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -17,8 +18,8 @@ Artisan::command('inspire', function () {
 Artisan::command('csv:import', function () {
     $payment_service = new PaymentImportService();
     $chunk_number = 1;
+    $start = microtime(true); // Start timer
     foreach ($payment_service->import() as $chunk_result) {
-        $start = microtime(true); // Start timer
         if(isset($chunk_result['data']) && !isset($chunk_result['error'])) {
             ['payments' => $processed_payments, 'loan_updates' => $processed_loan_updates, 'refunds' => $refunds, 'rejected_payments' => $rejected_payments] = $chunk_result['data'];
             $this->info("Chunk {$chunk_number} processed:");
@@ -58,8 +59,35 @@ Artisan::command('csv:import', function () {
         }
 
         $duration = round((microtime(true) - $start) * 1000);
-        $this->info("Completed in {$duration} ms.");
+        $this->info("Chunk {$chunk_number} processed in {$duration} ms.");
 
         $chunk_number++;
+        $start = microtime(true); // Reset timer for next chunk
     }
-})->purpose('Import CSV files');
+})->purpose('Import CSV files, and output tables');
+
+Artisan::command('report {--date=}', function () {
+    $date = $this->option('date') ?? now()->toDateString();
+
+    // validate YYYY-MM-DD
+    try {
+        $dt = Carbon::createFromFormat('Y-m-d', $date);
+    } catch (\Exception $e) {
+        $this->error('Invalid date format. Use YYYY-MM-DD (example: --date=2025-12-12).');
+        return;
+    }
+
+    $this->info("Showing payments for: {$dt->toDateString()}");
+
+    // Example: fetch and display payments for that date
+    $payment_service = new PaymentImportService();
+    $payments = $payment_service->getPaymentsByDate($dt->toDateString());
+    if (empty($payments)) {
+        $this->info('No payments found for that date.');
+        return;
+    }
+
+    $headers = array_keys($payments[array_key_first($payments)]);
+    $rows = array_map(fn($p) => array_values($p), $payments);
+    $this->table($headers, $rows);
+})->purpose('Show payments by date');
