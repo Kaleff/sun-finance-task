@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Loan;
+use App\Models\Payment;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -11,23 +13,23 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('payments', function (Blueprint $table) {
+        Schema::create(Payment::PAYMENTS_TABLE, function (Blueprint $table) {
             $table->id();
-            $table->string('payer_name');
-            $table->string('payer_surname');
-            $table->decimal('amount', 10, 2);
-            $table->string('ssn')->nullable(); // nationalSecurityNumber and nullable in csv file, not present in API
-            $table->string('loan_reference'); // Description column in csv file and api
-            $table->string('payment_reference')->unique(); // RefId in api, paymentReference in csv file
-            $table->enum('state', ['ASSIGNED', 'PARTIALLY_ASSIGNED', 'REJECTED']);
-            $table->string('rejection_reason')->nullable(); // Reason for rejection
-            $table->enum('source', ['api', 'csv']);
-            $table->dateTime('payment_date');
+            $table->string(Payment::COLUMN_PAYER_NAME);
+            $table->string(Payment::COLUMN_PAYER_SURNAME);
+            $table->decimal(Payment::COLUMN_AMOUNT, 10, 2);
+            $table->string(Payment::COLUMN_SSN)->nullable()->default(null); // nationalSecurityNumber and nullable in csv file, not present in API
+            $table->string(Payment::COLUMN_LOAN_REFERENCE); // Description column in csv file and api
+            $table->string(Payment::COLUMN_PAYMENT_REFERENCE)->unique(); // RefId in api, paymentReference in csv file
+            $table->enum(Payment::COLUMN_STATE, [Payment::STATE_ASSIGNED, Payment::STATE_PARTIALLY_ASSIGNED, Payment::STATE_REJECTED]);
+            $table->integer(Payment::COLUMN_CODE); // 0 for success, everything else is an error
+            $table->enum(Payment::COLUMN_SOURCE, [Payment::SOURCE_API, Payment::SOURCE_CSV]);
+            $table->dateTimeTz(Payment::COLUMN_PAYMENT_DATE);
         });
 
-        Schema::table('payments', function (Blueprint $table) {
-            $table->foreign('loan_reference')->references('reference')->on('loans')->onDelete('cascade');
-            $table->index(['loan_reference', 'payment_reference']);
+        Schema::table(Payment::PAYMENTS_TABLE, function (Blueprint $table) {
+            $table->foreign(Payment::COLUMN_LOAN_REFERENCE)->references(Loan::COLUMN_REFERENCE)->on(Loan::LOANS_TABLE)->onDelete('cascade');
+            $table->index([Payment::COLUMN_LOAN_REFERENCE, Payment::COLUMN_PAYMENT_REFERENCE]);
         });
     }
 
@@ -36,10 +38,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('payments', function (Blueprint $table) {
-            $table->dropForeign(['loan_reference']);
-            $table->dropIndex(['loan_reference', 'payment_reference']);
+        Schema::table(Payment::PAYMENTS_TABLE, function (Blueprint $table) {
+            $table->dropForeign([Payment::COLUMN_LOAN_REFERENCE]);
+            $table->dropIndex([Payment::COLUMN_LOAN_REFERENCE, Payment::COLUMN_PAYMENT_REFERENCE]);
         });
-        Schema::dropIfExists('payments');
+        Schema::dropIfExists(Payment::PAYMENTS_TABLE);
     }
 };

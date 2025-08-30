@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Payment;
+use App\Models\Refund;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -11,17 +13,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('refunds', function (Blueprint $table) {
+        Schema::create(Refund::REFUNDS_TABLE, function (Blueprint $table) {
             $table->id();
-            $table->string('payment_reference');
-            $table->decimal('amount', 10, 2);
-            $table->enum('status', ['PENDING', 'COMPLETED', 'FAILED']);
+            $table->string(Refund::COLUMN_PAYMENT_REFERENCE);
+            $table->decimal(Refund::COLUMN_AMOUNT, 10, 2);
+            $table->enum(Refund::COLUMN_STATUS, [Refund::STATUS_PENDING, Refund::STATUS_COMPLETED, Refund::STATUS_FAILED])
+                ->default(Refund::STATUS_PENDING);
             $table->timestamps();
         });
 
-        Schema::table('refunds', function (Blueprint $table) {
-            $table->foreign('payment_reference')->references('payment_reference')->on('payments')->onDelete('cascade');
-            $table->index(['payment_reference', 'status']);
+        Schema::table(Refund::REFUNDS_TABLE, function (Blueprint $table) {
+            $table->foreign(Refund::COLUMN_PAYMENT_REFERENCE)->references(Payment::COLUMN_PAYMENT_REFERENCE)->on(Payment::PAYMENTS_TABLE)->onDelete('cascade');
+            $table->index([Refund::COLUMN_PAYMENT_REFERENCE, Refund::COLUMN_STATUS]);
         });
     }
 
@@ -30,10 +33,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('refunds', function (Blueprint $table) {
-            $table->dropForeign(['payment_reference']);
-            $table->dropIndex(['payment_reference', 'status']);
+        Schema::table(Refund::REFUNDS_TABLE, function (Blueprint $table) {
+            $table->dropForeign([Refund::COLUMN_PAYMENT_REFERENCE]);
+            $table->dropIndex([Refund::COLUMN_PAYMENT_REFERENCE, Refund::COLUMN_STATUS]);
         });
-        Schema::dropIfExists('refunds');
+        Schema::dropIfExists(Refund::REFUNDS_TABLE);
     }
 };
