@@ -98,13 +98,13 @@ class PaymentImportService
             ];
         }
 
-        $loan[Loan::COLUMN_AMOUNT_PAID] += $payment[Payment::COLUMN_AMOUNT];
+        $loan[Loan::COLUMN_AMOUNT_PAID] += (float) $payment[Payment::COLUMN_AMOUNT];
         if ($loan[Loan::COLUMN_AMOUNT_PAID] > $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
             $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
             $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
             $refund = [
                 Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
-                Refund::COLUMN_AMOUNT => $payment[Payment::COLUMN_AMOUNT],
+                Refund::COLUMN_AMOUNT => $loan[Loan::COLUMN_AMOUNT_PAID] - $loan[Loan::COLUMN_AMOUNT_TO_PAY],
                 Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
             ];
         } else {
@@ -116,11 +116,13 @@ class PaymentImportService
         $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
 
         try {
-            DB::transaction(function () use ($payment, $loan, $refund) {
+            DB::transaction(function () use ($payment, $loan, &$refund) {
                 Payment::insert($payment);
                 $loan->save();
                 if ($refund) {
                     Refund::create($refund);
+                    // Convert amount to string to avoid precision issues converting to json
+                    $refund[Refund::COLUMN_AMOUNT] = (string) $refund[Refund::COLUMN_AMOUNT];
                 }
             });
         } catch (\Exception $e) {
@@ -135,7 +137,8 @@ class PaymentImportService
         return [
             'data' => [
                 'payment' => $payment,
-                'loan' => $loan->toArray()
+                'loan' => $loan->toArray(),
+                'refund' => $refund ? $refund : null
             ],
             'error' => null,
             'message' => 'Payment created successfully'
@@ -385,6 +388,7 @@ class PaymentImportService
         // Add 'source' => 'csv' to each payment before insert
         $valid_payments = array_map(function ($payment) {
             $payment[Payment::COLUMN_SOURCE] = Payment::SOURCE_CSV;
+            $payment[Payment::COLUMN_SSN] = empty($payment[Payment::COLUMN_SSN]) ? null : trim((string) $payment[Payment::COLUMN_SSN]);
             return $payment;
         }, $valid_payments);
 

@@ -44,6 +44,7 @@ class Payment extends Model
     {
         return [
             self::COLUMN_PAYMENT_DATE => 'datetime',
+            self::COLUMN_AMOUNT => 'decimal:2',
         ];
     }
 

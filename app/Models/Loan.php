@@ -31,6 +31,9 @@ class Loan extends Model
     {
         return [
             self::COLUMN_ID => 'string',
+            self::COLUMN_AMOUNT_ISSUED => 'decimal:2',
+            self::COLUMN_AMOUNT_TO_PAY => 'decimal:2',
+            self::COLUMN_AMOUNT_PAID => 'decimal:2',
         ];
     }
 

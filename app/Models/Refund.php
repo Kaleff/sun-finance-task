@@ -25,4 +25,8 @@ class Refund extends Model
         self::COLUMN_CREATED_AT,
         self::COLUMN_UPDATED_AT
     ];
+
+    protected $casts = [
+        self::COLUMN_AMOUNT => 'decimal:2',
+    ];
 }
