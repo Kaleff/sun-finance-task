@@ -4,7 +4,7 @@
 > I've used Laravel Sail approach for building an application Dockerized.
 > To run laravel sail you need to utilise MAC, LINUX or Windows with WSL2 and a docker engine running.
 > In case you are using Windows WSL2, make sure to mount this project repository in WSL2 and run from there.
-> Further info is available here: https://laravel.com/docs/11.x/sail
+> Further info is available here: https://laravel.com/docs/12.x/sail
 
 1) Clone the repo
 
