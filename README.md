@@ -9,8 +9,8 @@
 1) Clone the repo
 
 ```
-git clone https://github.com/Kaleff/eu-land.git
-cd eu-land
+git clone https://github.com/Kaleff/sun-finance-task.git
+cd sun-finance-task
 ```
 2) Copy, configure the .env.example file and rename the copy to .env
 ```
