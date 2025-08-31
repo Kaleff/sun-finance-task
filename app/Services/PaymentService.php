@@ -23,8 +23,6 @@ class PaymentService
 
     public function createPayment(array $payment_data): array
     {
-        // Assume $payment_data has been validated/normalized by StorePaymentRequest.
-
         $payment = $this->mapApiToAttributes($payment_data);
 
         $loan_ref = $payment[Payment::COLUMN_LOAN_REFERENCE] ?? null;
@@ -33,7 +31,7 @@ class PaymentService
             : 0;
 
         // Defensive fetch (request validation should have ensured existence for HTTP callers)
-        $loan = $this->fetchActiveLoan((string) $loan_ref);
+        $loan = $this->fetchActiveLoan((string) $loan_ref ?? '');
         if (!$loan) {
             return [
                 'data' => null,
@@ -53,7 +51,7 @@ class PaymentService
         $payment[Payment::COLUMN_STATE] = $payment_state;
         $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
         $payment[Payment::COLUMN_SOURCE] = Payment::SOURCE_API;
-        // store amount as formatted string to avoid float noise
+        // Store amount as formatted string to avoid float noise
         $payment[Payment::COLUMN_AMOUNT] = number_format($payment_amount_cents / 100, 2, '.', '');
 
         try {
