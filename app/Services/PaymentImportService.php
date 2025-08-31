@@ -293,10 +293,10 @@ class PaymentImportService
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
                 $loan->{Loan::COLUMN_STATE} = Loan::STATE_PAID;
 
-                $refund_cents = $new_loan_amount_paid_cents - $loan_amount_to_pay_cents;
+                $refund_amount_cents = $new_loan_amount_paid_cents - $loan_amount_to_pay_cents;
                 $refunds[] = [
                     Refund::COLUMN_PAYMENT_REFERENCE => $payment_reference,
-                    Refund::COLUMN_AMOUNT => number_format($refund_cents / 100, 2, '.', ''),
+                    Refund::COLUMN_AMOUNT => number_format($refund_amount_cents / 100, 2, '.', ''),
                     Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
                     Refund::COLUMN_CREATED_AT => now(),
                     Refund::COLUMN_UPDATED_AT => now(),

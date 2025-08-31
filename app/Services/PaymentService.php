@@ -28,7 +28,9 @@ class PaymentService
         $payment = $this->mapApiToAttributes($payment_data);
 
         $loan_ref = $payment[Payment::COLUMN_LOAN_REFERENCE] ?? null;
-        $amount = isset($payment[Payment::COLUMN_AMOUNT]) ? (float) $payment[Payment::COLUMN_AMOUNT] : 0.0;
+        $payment_amount_cents = isset($payment[Payment::COLUMN_AMOUNT])
+            ? (int) round((float) $payment[Payment::COLUMN_AMOUNT] * 100)
+            : 0;
 
         // Defensive fetch (request validation should have ensured existence for HTTP callers)
         $loan = $this->fetchActiveLoan((string) $loan_ref);
@@ -41,17 +43,21 @@ class PaymentService
         }
 
         // Business logic: determine payment state, new loan amount_paid and any refund
-        [$payment_state, $new_amount_paid, $refund_amount] = $this->computeAssignment($loan, $amount);
+        [
+            'payment_state' => $payment_state,
+            'new_amount_paid_cents' => $new_amount_paid_cents,
+            'refund_amount_cents' => $refund_amount_cents
+        ] = $this->computeAssignment($loan, $payment_amount_cents);
 
         // Prepare attributes for persistence
         $payment[Payment::COLUMN_STATE] = $payment_state;
         $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
         $payment[Payment::COLUMN_SOURCE] = Payment::SOURCE_API;
         // store amount as formatted string to avoid float noise
-        $payment[Payment::COLUMN_AMOUNT] = number_format($amount, 2, '.', '');
+        $payment[Payment::COLUMN_AMOUNT] = number_format($payment_amount_cents / 100, 2, '.', '');
 
         try {
-            [$created_payment, $created_refund, $updated_loan] = $this->persistSinglePayment($payment, $loan, $new_amount_paid, $refund_amount);
+            [$created_payment, $created_refund, $updated_loan] = $this->persistSinglePayment($payment, $loan, $new_amount_paid_cents, $refund_amount_cents);
         } catch (\Throwable $e) {
             Log::error("Error creating payment: {$e->getMessage()}", ['attrs' => $payment, 'loan_ref' => $loan_ref]);
             return [
@@ -65,7 +71,7 @@ class PaymentService
             'data' => [
                 'payment' => $created_payment ? $created_payment->toArray() : $payment,
                 'loan' => $updated_loan ? $updated_loan->toArray() : $loan->toArray(),
-                'refund' => $created_refund ? $created_refund->toArray() : ($refund_amount !== null ? ['amount' => number_format($refund_amount, 2, '.', '')] : null)
+                'refund' => $created_refund ? $created_refund->toArray() : ($refund_amount_cents !== null ? ['amount' => number_format($refund_amount_cents / 100, 2, '.', '')] : null)
             ],
             'error' => null,
             'message' => 'Payment created successfully'
@@ -114,51 +120,59 @@ class PaymentService
     }
 
     /**
-     * Business calculation: returns [payment_state, new_amount_paid, refund_amount|null]
+     * Business calculation: returns [payment_state, new_amount_paid_cents, refund_amount_cents|null]
      */
-    private function computeAssignment(Loan $loan, float $amount): array
+    private function computeAssignment(Loan $loan, int $payment_amount_cents): array
     {
-        $current = (float) $loan[Loan::COLUMN_AMOUNT_PAID];
-        $to_pay = (float) $loan[Loan::COLUMN_AMOUNT_TO_PAY];
-        $new_amount_paid = $current + $amount;
+        $loan_amount_paid = (float) $loan[Loan::COLUMN_AMOUNT_PAID];
+        $loan_amount_to_pay = (float) $loan[Loan::COLUMN_AMOUNT_TO_PAY];
+        $loan_amount_paid_cents = (int) round($loan_amount_paid * 100);
+        $loan_amount_to_pay_cents = (int) round($loan_amount_to_pay * 100);
 
-        $refund_amount = null;
-        if ($new_amount_paid > $to_pay) {
+        $new_amount_paid_cents = $loan_amount_paid_cents + $payment_amount_cents;
+
+        $refund_amount_cents = null;
+        if ($new_amount_paid_cents > $loan_amount_to_pay_cents) {
             $payment_state = Payment::STATE_PARTIALLY_ASSIGNED;
-            $refund_amount = $new_amount_paid - $to_pay;
+            $refund_amount_cents = $new_amount_paid_cents - $loan_amount_to_pay_cents;
         } else {
             $payment_state = Payment::STATE_ASSIGNED;
         }
 
-        return [$payment_state, $new_amount_paid, $refund_amount];
+        return [
+            'payment_state' => $payment_state,
+            'new_amount_paid_cents' => $new_amount_paid_cents,
+            'refund_amount_cents' => $refund_amount_cents
+        ];
     }
 
     /**
      * Persist payment, update loan and optionally create a refund inside a DB transaction.
      * Returns [created_payment_model|null, created_refund_model|null, updated_loan_model]
      */
-    private function persistSinglePayment(array $payment, Loan $loan, float $new_amount_paid, ?float $refund_amount): array
+    private function persistSinglePayment(array $payment, Loan $loan, int $new_amount_paid_cents, ?int $refund_amount_cents): array
     {
         $created_payment = null;
         $created_refund = null;
 
-        DB::transaction(function () use (&$created_payment, &$created_refund, $payment, $loan, $new_amount_paid, $refund_amount) {
-            // Use Eloquent create so casts/fillable/events are respected
+        DB::transaction(function () use (&$created_payment, &$created_refund, $payment, $loan, $new_amount_paid_cents, $refund_amount_cents) {
             $created_payment = Payment::create($payment);
 
-            // Update loan totals/state
-            $loan[Loan::COLUMN_AMOUNT_PAID] = $new_amount_paid;
-            $loan[Loan::COLUMN_STATE] = $new_amount_paid >= (float) $loan[Loan::COLUMN_AMOUNT_TO_PAY] ? Loan::STATE_PAID : $loan[Loan::COLUMN_STATE];
+            $loan_amount_to_pay_cents = (int) round((float) $loan->{Loan::COLUMN_AMOUNT_TO_PAY} * 100);
+
+            // Update loan totals/state, store potential float values as strings to avoid precision issues
+            $loan->{Loan::COLUMN_AMOUNT_PAID} = number_format($new_amount_paid_cents / 100, 2, '.', '');
+            $loan->{Loan::COLUMN_STATE} = $new_amount_paid_cents >= $loan_amount_to_pay_cents
+                ? Loan::STATE_PAID
+                : $loan->{Loan::COLUMN_STATE};
             $loan->save();
 
             // Create refund if required (amount saved as formatted string)
-            if ($refund_amount !== null && $refund_amount > 0) {
+            if ($refund_amount_cents !== null && $refund_amount_cents > 0) {
                 $created_refund = Refund::create([
                     Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
-                    Refund::COLUMN_AMOUNT => number_format($refund_amount, 2, '.', ''),
+                    Refund::COLUMN_AMOUNT => number_format($refund_amount_cents / 100, 2, '.', ''),
                     Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
-                    Refund::COLUMN_CREATED_AT => now(),
-                    Refund::COLUMN_UPDATED_AT => now(),
                 ]);
             }
         });
