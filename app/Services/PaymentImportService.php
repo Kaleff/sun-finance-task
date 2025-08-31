@@ -235,18 +235,27 @@ class PaymentImportService
         $batch_payment_references = [];
         $loan_updates = [];
         $refunds = [];
+
         foreach ($payments as &$payment) {
+            // Ensure amount is numeric (defensive)
+            $raw_amount = $payment[Payment::COLUMN_AMOUNT] ?? null;
+            $payment_amount = is_numeric($raw_amount) ? (float) $raw_amount : 0.0;
+            $payment_amount_cents = (int) round($payment_amount * 100);
+            $payment_reference = $payment[Payment::COLUMN_PAYMENT_REFERENCE] ?? null;
+
             // Batch duplicate check
             if (
-                isset($batch_payment_references[$payment[Payment::COLUMN_PAYMENT_REFERENCE]]) ||
+                ($payment_reference && isset($batch_payment_references[$payment_reference])) ||
                 (isset($payment[Payment::COLUMN_CODE]) && $payment[Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE)
             ) {
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
                 $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_DUPLICATE;
-                Log::warning("Duplicate payment reference found in batch: ." . $payment[Payment::COLUMN_PAYMENT_REFERENCE] . ", skipping.");
+                Log::warning("Duplicate payment reference found in batch: " . ($payment_reference ?? '[no-ref]') . ", skipping.");
                 continue;
             } else {
-                $batch_payment_references[$payment[Payment::COLUMN_PAYMENT_REFERENCE]] = true;
+                if ($payment_reference) {
+                    $batch_payment_references[$payment_reference] = true;
+                }
             }
 
             // Skip already rejected payments
@@ -255,50 +264,67 @@ class PaymentImportService
             }
 
             // Defensive: Check loan exists
-            if (!isset($loans[$payment[Payment::COLUMN_LOAN_REFERENCE]])) {
+            $loan_reference = $payment[Payment::COLUMN_LOAN_REFERENCE] ?? null;
+            if (!$loan_reference || !isset($loans[$loan_reference])) {
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
                 $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_LOAN_REFERENCE;
                 continue;
             }
 
-            $loan = $loans[$payment[Payment::COLUMN_LOAN_REFERENCE]];
-
-            if ($loan[Loan::COLUMN_STATE] === Loan::STATE_PAID) {
+            // Defensive: Check if loan got paid off by previous payments
+            $loan = $loans[$loan_reference];
+            if ($loan->{Loan::COLUMN_STATE} === Loan::STATE_PAID) {
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
                 $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_ALREADY_PAID;
-            } else {
-                $loan[Loan::COLUMN_AMOUNT_PAID] += $payment[Payment::COLUMN_AMOUNT];
-                if ($loan[Loan::COLUMN_AMOUNT_PAID] > $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
-                    $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
-                    $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
-                    $refunds[] = [
-                        Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
-                        Refund::COLUMN_AMOUNT => $loan[Loan::COLUMN_AMOUNT_PAID] - $loan[Loan::COLUMN_AMOUNT_TO_PAY],
-                        Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
-                        Refund::COLUMN_CREATED_AT => now(),
-                        Refund::COLUMN_UPDATED_AT => now(),
-                    ];
-                } else {
-                    $payment[Payment::COLUMN_STATE] = Payment::STATE_ASSIGNED;
-                    if ($loan[Loan::COLUMN_AMOUNT_PAID] == $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
-                        $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
-                    }
-                }
-                // Using loan->id as a key for a case where multiple payments are made towards the same loan
-                $loan_updates[$loan[Loan::COLUMN_ID]] = [
-                    Loan::COLUMN_ID => $loan[Loan::COLUMN_ID],
-                    Loan::COLUMN_CUSTOMER_ID => $loan[Loan::COLUMN_CUSTOMER_ID],
-                    Loan::COLUMN_REFERENCE => $loan[Loan::COLUMN_REFERENCE],
-                    Loan::COLUMN_AMOUNT_ISSUED => $loan[Loan::COLUMN_AMOUNT_ISSUED],
-                    Loan::COLUMN_AMOUNT_TO_PAY => $loan[Loan::COLUMN_AMOUNT_TO_PAY],
-                    Loan::COLUMN_AMOUNT_PAID => $loan[Loan::COLUMN_AMOUNT_PAID],
-                    Loan::COLUMN_STATE => $loan[Loan::COLUMN_STATE],
-                    Loan::COLUMN_UPDATED_AT => now(),
-                ];
-                $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
+                continue;
             }
+
+            // compute amounts in cents to avoid float precision during calculations
+            $loan_amount_paid = (float) $loan->{Loan::COLUMN_AMOUNT_PAID};
+            $loan_amount_to_pay = (float) $loan->{Loan::COLUMN_AMOUNT_TO_PAY};
+            $loan_amount_paid_cents = (int) round($loan_amount_paid * 100);
+            $loan_amount_to_pay_cents = (int) round($loan_amount_to_pay * 100);
+
+            $new_loan_amount_paid_cents = $loan_amount_paid_cents + $payment_amount_cents;
+
+            // Calculate loans and payments
+            if ($new_loan_amount_paid_cents > $loan_amount_to_pay_cents) {
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
+                $loan->{Loan::COLUMN_STATE} = Loan::STATE_PAID;
+
+                $refund_cents = $new_loan_amount_paid_cents - $loan_amount_to_pay_cents;
+                $refunds[] = [
+                    Refund::COLUMN_PAYMENT_REFERENCE => $payment_reference,
+                    Refund::COLUMN_AMOUNT => number_format($refund_cents / 100, 2, '.', ''),
+                    Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
+                    Refund::COLUMN_CREATED_AT => now(),
+                    Refund::COLUMN_UPDATED_AT => now(),
+                ];
+
+                $loan->{Loan::COLUMN_AMOUNT_PAID} = number_format($new_loan_amount_paid_cents / 100, 2, '.', '');
+            } else {
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_ASSIGNED;
+                $loan->{Loan::COLUMN_AMOUNT_PAID} = number_format($new_loan_amount_paid_cents / 100, 2, '.', '');
+                if ($new_loan_amount_paid_cents === $loan_amount_to_pay_cents) {
+                    $loan->{Loan::COLUMN_STATE} = Loan::STATE_PAID;
+                }
+            }
+
+            // Using loan->id as a key for cases where multiple payments target same loan
+            $loan_updates[$loan->{Loan::COLUMN_ID}] = [
+                Loan::COLUMN_ID => $loan->{Loan::COLUMN_ID},
+                Loan::COLUMN_CUSTOMER_ID => $loan->{Loan::COLUMN_CUSTOMER_ID},
+                Loan::COLUMN_REFERENCE => $loan->{Loan::COLUMN_REFERENCE},
+                Loan::COLUMN_AMOUNT_ISSUED => $loan->{Loan::COLUMN_AMOUNT_ISSUED},
+                Loan::COLUMN_AMOUNT_TO_PAY => $loan->{Loan::COLUMN_AMOUNT_TO_PAY},
+                Loan::COLUMN_AMOUNT_PAID => $loan->{Loan::COLUMN_AMOUNT_PAID},
+                Loan::COLUMN_STATE => $loan->{Loan::COLUMN_STATE},
+                Loan::COLUMN_UPDATED_AT => now(),
+            ];
+
+            $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
         }
-        // Break the reference created by foreach loop for safety purposes
+        // Unset $payment passing by reference for safety purposes
         unset($payment);
 
         return ([
