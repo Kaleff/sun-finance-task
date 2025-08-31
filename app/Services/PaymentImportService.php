@@ -28,7 +28,7 @@ class PaymentImportService
     ];
 
     /**
-     * Import payments from a CSV file in chunks.
+     * Import payments from a CSV file in chunks. Yields chunked data, is a generator.
      *
      * @return array
      */
@@ -52,11 +52,32 @@ class PaymentImportService
 
             ['payments' => $processed_payments, 'loan_updates' => $processed_loan_updates, 'refunds' => $refunds] = $this->processPayments($validated_payments, $loans);
 
-            yield $this->createMassTransaction(
-                payments: $processed_payments,
-                loan_updates: $processed_loan_updates,
-                refunds: $refunds
-            );
+            ['valid_payments' => $valid_payments, 'rejected_payments' => $rejected_payments] = $this->preparePaymentsForTransaction($processed_payments);
+
+            try {
+                ['stored_payments' => $stored_payments, 'updated_loans' => $updated_loans, 'created_refunds' => $created_refunds] = $this->createMassTransaction(
+                    valid_payments: $valid_payments,
+                    loan_updates: $processed_loan_updates,
+                    refunds: $refunds
+                );
+                yield [
+                    'data' => [
+                        'payments' => $stored_payments,
+                        'loan_updates' => $updated_loans,
+                        'refunds' => $created_refunds,
+                        'rejected_payments' => $rejected_payments
+                    ],
+                    'error' => null,
+                    'message' => 'Payment import success'
+                ];
+            } catch (\Exception $e) {
+                Log::error('Payment import failed: ' . $e->getMessage());
+                yield [
+                    'data' => null,
+                    'error' => 'Payment import fail',
+                    'message' => $e->getMessage()
+                ];
+            }
         }
     }
 
@@ -165,6 +186,7 @@ class PaymentImportService
 
     /**
      * Validate payments.
+     * Returns [payments]
      */
     private function validatePayments(array $payments, array $active_loan_references, array $existing_payment_references): array
     {
@@ -188,8 +210,9 @@ class PaymentImportService
             foreach ($errors as $key => $messages) {
                 [$index, $field] = explode('.', $key);
                 $payments[$index][Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
+                // Assign error code, prioritize duplicates
                 $is_duplicate = isset($payments[$index][Payment::COLUMN_CODE]) && $payments[$index][Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE;
-                if(!$is_duplicate) {
+                if (!$is_duplicate) {
                     $payments[$index][Payment::COLUMN_CODE] = match ($field) {
                         Payment::COLUMN_PAYMENT_REFERENCE => Payment::CODE_ERROR_DUPLICATE,
                         Payment::COLUMN_AMOUNT => Payment::CODE_ERROR_AMOUNT,
@@ -205,25 +228,35 @@ class PaymentImportService
     }
 
     /**
-     * Process validated payments.
+     * Process validated payments. Business logic
+     * Returns [payments, loan_updates, refunds]
      */
     private function processPayments(array $payments, $loans): array
     {
         $batch_payment_references = [];
         $loan_updates = [];
         $refunds = [];
+
         foreach ($payments as &$payment) {
-            // Batch duplicate check
+            // Ensure amount is numeric (defensive)
+            $raw_amount = $payment[Payment::COLUMN_AMOUNT] ?? null;
+            $payment_amount = is_numeric($raw_amount) ? (float) $raw_amount : 0.0;
+            $payment_amount_cents = (int) round($payment_amount * 100);
+            $payment_reference = $payment[Payment::COLUMN_PAYMENT_REFERENCE] ?? null;
+
+            // Batch duplicate check. Add data about already used payment references
             if (
-                isset($batch_payment_references[$payment[Payment::COLUMN_PAYMENT_REFERENCE]]) ||
+                ($payment_reference && isset($batch_payment_references[$payment_reference])) ||
                 (isset($payment[Payment::COLUMN_CODE]) && $payment[Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE)
             ) {
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
                 $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_DUPLICATE;
-                Log::warning("Duplicate payment reference found in batch: ." . $payment[Payment::COLUMN_PAYMENT_REFERENCE] . ", skipping.");
+                Log::warning("Duplicate payment reference found in batch: " . ($payment_reference ?? '[no-ref]') . ", skipping.");
                 continue;
             } else {
-                $batch_payment_references[$payment[Payment::COLUMN_PAYMENT_REFERENCE]] = true;
+                if ($payment_reference) {
+                    $batch_payment_references[$payment_reference] = true;
+                }
             }
 
             // Skip already rejected payments
@@ -232,67 +265,89 @@ class PaymentImportService
             }
 
             // Defensive: Check loan exists
-            if (!isset($loans[$payment[Payment::COLUMN_LOAN_REFERENCE]])) {
+            $loan_reference = $payment[Payment::COLUMN_LOAN_REFERENCE] ?? null;
+            if (!$loan_reference || !isset($loans[$loan_reference])) {
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
                 $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_LOAN_REFERENCE;
                 continue;
             }
 
-            $loan = $loans[$payment[Payment::COLUMN_LOAN_REFERENCE]];
-
-            if ($loan[Loan::COLUMN_STATE] === Loan::STATE_PAID) {
+            // Defensive: Check if loan got paid off by previous payments
+            $loan = $loans[$loan_reference];
+            if ($loan->{Loan::COLUMN_STATE} === Loan::STATE_PAID) {
                 $payment[Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
                 $payment[Payment::COLUMN_CODE] = Payment::CODE_ERROR_ALREADY_PAID;
-            } else {
-                $loan[Loan::COLUMN_AMOUNT_PAID] += $payment[Payment::COLUMN_AMOUNT];
-                if ($loan[Loan::COLUMN_AMOUNT_PAID] > $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
-                    $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
-                    $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
-                    $refunds[] = [
-                        Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
-                        Refund::COLUMN_AMOUNT => $loan[Loan::COLUMN_AMOUNT_PAID] - $loan[Loan::COLUMN_AMOUNT_TO_PAY],
-                        Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
-                        Refund::COLUMN_CREATED_AT => now(),
-                        Refund::COLUMN_UPDATED_AT => now(),
-                    ];
-                } else {
-                    $payment[Payment::COLUMN_STATE] = Payment::STATE_ASSIGNED;
-                    if ($loan[Loan::COLUMN_AMOUNT_PAID] == $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
-                        $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
-                    }
-                }
-                // Using loan->id as a key for a case where multiple payments are made towards the same loan
-                $loan_updates[$loan[Loan::COLUMN_ID]] = [
-                    Loan::COLUMN_ID => $loan[Loan::COLUMN_ID],
-                    Loan::COLUMN_CUSTOMER_ID => $loan[Loan::COLUMN_CUSTOMER_ID],
-                    Loan::COLUMN_REFERENCE => $loan[Loan::COLUMN_REFERENCE],
-                    Loan::COLUMN_AMOUNT_ISSUED => $loan[Loan::COLUMN_AMOUNT_ISSUED],
-                    Loan::COLUMN_AMOUNT_TO_PAY => $loan[Loan::COLUMN_AMOUNT_TO_PAY],
-                    Loan::COLUMN_AMOUNT_PAID => $loan[Loan::COLUMN_AMOUNT_PAID],
-                    Loan::COLUMN_STATE => $loan[Loan::COLUMN_STATE],
-                    Loan::COLUMN_UPDATED_AT => now(),
-                ];
-                $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
+                continue;
             }
+
+            // compute amounts in cents to avoid float precision during calculations
+            $loan_amount_paid = (float) $loan->{Loan::COLUMN_AMOUNT_PAID};
+            $loan_amount_to_pay = (float) $loan->{Loan::COLUMN_AMOUNT_TO_PAY};
+            $loan_amount_paid_cents = (int) round($loan_amount_paid * 100);
+            $loan_amount_to_pay_cents = (int) round($loan_amount_to_pay * 100);
+
+            $new_loan_amount_paid_cents = $loan_amount_paid_cents + $payment_amount_cents;
+
+            // Calculate loans and payments
+            if ($new_loan_amount_paid_cents > $loan_amount_to_pay_cents) {
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
+                $loan->{Loan::COLUMN_STATE} = Loan::STATE_PAID;
+
+                $refund_cents = $new_loan_amount_paid_cents - $loan_amount_to_pay_cents;
+                $refunds[] = [
+                    Refund::COLUMN_PAYMENT_REFERENCE => $payment_reference,
+                    Refund::COLUMN_AMOUNT => number_format($refund_cents / 100, 2, '.', ''),
+                    Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
+                    Refund::COLUMN_CREATED_AT => now(),
+                    Refund::COLUMN_UPDATED_AT => now(),
+                ];
+
+                $loan->{Loan::COLUMN_AMOUNT_PAID} = number_format($new_loan_amount_paid_cents / 100, 2, '.', '');
+            } else {
+                $payment[Payment::COLUMN_STATE] = Payment::STATE_ASSIGNED;
+                $loan->{Loan::COLUMN_AMOUNT_PAID} = number_format($new_loan_amount_paid_cents / 100, 2, '.', '');
+                if ($new_loan_amount_paid_cents === $loan_amount_to_pay_cents) {
+                    $loan->{Loan::COLUMN_STATE} = Loan::STATE_PAID;
+                }
+            }
+
+            // Using loan->id as a key for cases where multiple payments target same loan
+            $loan_updates[$loan->{Loan::COLUMN_ID}] = [
+                Loan::COLUMN_ID => $loan->{Loan::COLUMN_ID},
+                Loan::COLUMN_CUSTOMER_ID => $loan->{Loan::COLUMN_CUSTOMER_ID},
+                Loan::COLUMN_REFERENCE => $loan->{Loan::COLUMN_REFERENCE},
+                Loan::COLUMN_AMOUNT_ISSUED => $loan->{Loan::COLUMN_AMOUNT_ISSUED},
+                Loan::COLUMN_AMOUNT_TO_PAY => $loan->{Loan::COLUMN_AMOUNT_TO_PAY},
+                Loan::COLUMN_AMOUNT_PAID => $loan->{Loan::COLUMN_AMOUNT_PAID},
+                Loan::COLUMN_STATE => $loan->{Loan::COLUMN_STATE},
+                Loan::COLUMN_UPDATED_AT => now(),
+            ];
+
+            $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
         }
-        // Break the reference created by foreach loop for safety purposes
+        // Unset $payment passing by reference for safety purposes
         unset($payment);
 
-        return([
+        return ([
             'payments' => $payments,
             'loan_updates' => $loan_updates,
             'refunds' => $refunds
         ]);
     }
 
-    private function createMassTransaction(array $payments, array $loan_updates, array $refunds)
+    /**
+     * Prepare data for transaction.
+     * Returns [valid_payments, rejected_payments]
+     */
+    private function preparePaymentsForTransaction(array $payments): array
     {
         $rejected_payments = [];
         $valid_payments = [];
 
         // Filter out rejected_payments from being written into a database
         foreach ($payments as $payment) {
-            if (isset($payment[Payment::COLUMN_CODE]) &&
+            if (
+                isset($payment[Payment::COLUMN_CODE]) &&
                 $payment[Payment::COLUMN_CODE] !== Payment::CODE_SUCCESS
             ) {
                 $rejected_payments[] = $payment;
@@ -301,51 +356,49 @@ class PaymentImportService
             }
         }
 
-        // Add 'source' => 'csv' to each payment before insert
         $valid_payments = array_map(function ($payment) {
             $payment[Payment::COLUMN_SOURCE] = Payment::SOURCE_CSV;
             $payment[Payment::COLUMN_SSN] = empty($payment[Payment::COLUMN_SSN]) ? null : trim((string) $payment[Payment::COLUMN_SSN]);
             return $payment;
         }, $valid_payments);
 
-        try {
-            $updated_loans = [];
-            DB::transaction(function () use ($valid_payments, $loan_updates, $refunds, &$updated_loans) {
-                if (!empty($valid_payments)) {
-                    Payment::insert($valid_payments);
-                }
-                if (!empty($loan_updates)) {
-                    Loan::upsert(
-                        array_values($loan_updates),
-                        uniqueBy: [Loan::COLUMN_ID],
-                        update: [Loan::COLUMN_AMOUNT_PAID, Loan::COLUMN_STATE, Loan::COLUMN_UPDATED_AT]
-                    );
-                    $loan_ids = array_keys($loan_updates);
+        return [
+            'valid_payments' => $valid_payments,
+            'rejected_payments' => $rejected_payments,
+        ];
+    }
 
-                    $updated_loans = Loan::whereIn(Loan::COLUMN_ID, $loan_ids)->get()->toArray();
-                }
-                if (!empty($refunds)) {
-                    Refund::insert($refunds);
-                }
-            });
-            return [
-                'data' => [
-                    'payments' => $valid_payments,
-                    'loan_updates' => $updated_loans,
-                    'refunds' => $refunds,
-                    'rejected_payments' => $rejected_payments
-                ],
-                'error' => null,
-                'message' => 'Payment import success'
-            ];
-        } catch (\Exception $e) {
-            // Handle the exception
-            Log::error('Payment import failed: ' . $e->getMessage());
-            return [
-                'data' => null,
-                'error' => 'Payment import fail',
-                'message' => $e->getMessage()
-            ];
-        }
+    /*
+     * Create a mass transaction for the valid payments, loan updates, and refunds.
+     * Personal comment: This method does NOT return fresh instances of the inserted/upserted payments and refunds, the only fresh part is the updated data about loans.
+     * This was done to limit calls to the database and improve performance.
+     */
+    private function createMassTransaction(array $valid_payments, array $loan_updates, array $refunds)
+    {
+        $updated_loans = [];
+
+        DB::transaction(function () use ($valid_payments, $loan_updates, $refunds, &$updated_loans) {
+            if (!empty($valid_payments)) {
+                Payment::insert($valid_payments);
+            }
+            if (!empty($loan_updates)) {
+                Loan::upsert(
+                    array_values($loan_updates),
+                    uniqueBy: [Loan::COLUMN_ID],
+                    update: [Loan::COLUMN_AMOUNT_PAID, Loan::COLUMN_STATE, Loan::COLUMN_UPDATED_AT]
+                );
+                $loan_ids = array_keys($loan_updates);
+
+                $updated_loans = Loan::whereIn(Loan::COLUMN_ID, $loan_ids)->get()->toArray();
+            }
+            if (!empty($refunds)) {
+                Refund::insert($refunds);
+            }
+        });
+        return [
+            'stored_payments' => $valid_payments,
+            'updated_loans' => $updated_loans,
+            'created_refunds' => $refunds
+        ];
     }
 }
