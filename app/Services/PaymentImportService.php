@@ -28,7 +28,7 @@ class PaymentImportService
     ];
 
     /**
-     * Import payments from a CSV file in chunks.
+     * Import payments from a CSV file in chunks. Yields chunked data, is a generator.
      *
      * @return array
      */
@@ -210,6 +210,7 @@ class PaymentImportService
             foreach ($errors as $key => $messages) {
                 [$index, $field] = explode('.', $key);
                 $payments[$index][Payment::COLUMN_STATE] = Payment::STATE_REJECTED;
+                // Assign error code, prioritize duplicates
                 $is_duplicate = isset($payments[$index][Payment::COLUMN_CODE]) && $payments[$index][Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE;
                 if (!$is_duplicate) {
                     $payments[$index][Payment::COLUMN_CODE] = match ($field) {
@@ -243,7 +244,7 @@ class PaymentImportService
             $payment_amount_cents = (int) round($payment_amount * 100);
             $payment_reference = $payment[Payment::COLUMN_PAYMENT_REFERENCE] ?? null;
 
-            // Batch duplicate check
+            // Batch duplicate check. Add data about already used payment references
             if (
                 ($payment_reference && isset($batch_payment_references[$payment_reference])) ||
                 (isset($payment[Payment::COLUMN_CODE]) && $payment[Payment::COLUMN_CODE] === Payment::CODE_ERROR_DUPLICATE)
@@ -367,6 +368,11 @@ class PaymentImportService
         ];
     }
 
+    /*
+     * Create a mass transaction for the valid payments, loan updates, and refunds.
+     * Personal comment: This method does NOT return fresh instances of the inserted/upserted payments and refunds, the only fresh part is the updated data about loans.
+     * This was done to limit calls to the database and improve performance.
+     */
     private function createMassTransaction(array $valid_payments, array $loan_updates, array $refunds)
     {
         $updated_loans = [];
