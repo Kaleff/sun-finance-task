@@ -38,7 +38,7 @@ php artisan key:generate
 
 6) Run the migrations and seeders, 
 ```
-./vendor/bin/sail artisan migrate:fresh -seed
+./vendor/bin/sail artisan migrate:refresh --seed
 ```
 
 7) Build front-end
