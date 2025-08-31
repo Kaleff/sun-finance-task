@@ -59,4 +59,6 @@ class Payment extends Model
         self::COLUMN_STATE,
         self::COLUMN_CODE,
     ];
+
+    public $timestamps = false;
 }

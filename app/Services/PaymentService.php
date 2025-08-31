@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\Refund;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -22,53 +23,37 @@ class PaymentService
 
     public function createPayment(array $payment_data): array
     {
-        // Map API columns to DB columns
-        $payment = [];
-        $refund = null;
-        foreach($payment_data as $key => $value) {
-            if (isset(self::COLUMN_MAPPING[$key])) {
-                $payment[self::COLUMN_MAPPING[$key]] = $value;
-            }
-        }
+        // Assume $payment_data has been validated/normalized by StorePaymentRequest.
 
-        $loan = $this->fetchActiveLoan($payment[Payment::COLUMN_LOAN_REFERENCE]);
-        if(!$loan) {
+        $payment = $this->mapApiToAttributes($payment_data);
+
+        $loan_ref = $payment[Payment::COLUMN_LOAN_REFERENCE] ?? null;
+        $amount = isset($payment[Payment::COLUMN_AMOUNT]) ? (float) $payment[Payment::COLUMN_AMOUNT] : 0.0;
+
+        // Defensive fetch (request validation should have ensured existence for HTTP callers)
+        $loan = $this->fetchActiveLoan((string) $loan_ref);
+        if (!$loan) {
             return [
                 'data' => null,
                 'error' => 'Active loan not found',
-                'message' => 'The loan specified by the refId ' . $payment[Payment::COLUMN_LOAN_REFERENCE] . ' was not found.'
+                'message' => 'The active loan specified by the refId ' . ($loan_ref ?? '') . ' was not found.'
             ];
         }
 
-        $loan[Loan::COLUMN_AMOUNT_PAID] += (float) $payment[Payment::COLUMN_AMOUNT];
-        if ($loan[Loan::COLUMN_AMOUNT_PAID] > $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
-            $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
-            $payment[Payment::COLUMN_STATE] = Payment::STATE_PARTIALLY_ASSIGNED;
-            $refund = [
-                Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
-                Refund::COLUMN_AMOUNT => $loan[Loan::COLUMN_AMOUNT_PAID] - $loan[Loan::COLUMN_AMOUNT_TO_PAY],
-                Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
-            ];
-        } else {
-            $payment[Payment::COLUMN_STATE] = Payment::STATE_ASSIGNED;
-            if ($loan[Loan::COLUMN_AMOUNT_PAID] == $loan[Loan::COLUMN_AMOUNT_TO_PAY]) {
-                $loan[Loan::COLUMN_STATE] = Loan::STATE_PAID;
-            }
-        }
+        // Business logic: determine payment state, new loan amount_paid and any refund
+        [$payment_state, $new_amount_paid, $refund_amount] = $this->computeAssignment($loan, $amount);
+
+        // Prepare attributes for persistence
+        $payment[Payment::COLUMN_STATE] = $payment_state;
         $payment[Payment::COLUMN_CODE] = Payment::CODE_SUCCESS;
+        $payment[Payment::COLUMN_SOURCE] = Payment::SOURCE_API;
+        // store amount as formatted string to avoid float noise
+        $payment[Payment::COLUMN_AMOUNT] = number_format($amount, 2, '.', '');
 
         try {
-            DB::transaction(function () use ($payment, $loan, &$refund) {
-                Payment::insert($payment);
-                $loan->save();
-                if ($refund) {
-                    Refund::create($refund);
-                    // Convert amount to string to avoid precision issues converting to json
-                    $refund[Refund::COLUMN_AMOUNT] = (string) $refund[Refund::COLUMN_AMOUNT];
-                }
-            });
-        } catch (\Exception $e) {
-            Log::error("Error creating payment: {$e->getMessage()}");
+            [$created_payment, $created_refund, $updated_loan] = $this->persistSinglePayment($payment, $loan, $new_amount_paid, $refund_amount);
+        } catch (\Throwable $e) {
+            Log::error("Error creating payment: {$e->getMessage()}", ['attrs' => $payment, 'loan_ref' => $loan_ref]);
             return [
                 'data' => null,
                 'error' => 'Payment creation failed',
@@ -78,19 +63,106 @@ class PaymentService
 
         return [
             'data' => [
-                'payment' => $payment,
-                'loan' => $loan->toArray(),
-                'refund' => $refund ? $refund : null
+                'payment' => $created_payment ? $created_payment->toArray() : $payment,
+                'loan' => $updated_loan ? $updated_loan->toArray() : $loan->toArray(),
+                'refund' => $created_refund ? $created_refund->toArray() : ($refund_amount !== null ? ['amount' => number_format($refund_amount, 2, '.', '')] : null)
             ],
             'error' => null,
             'message' => 'Payment created successfully'
         ];
     }
 
+    /**
+     * Fetch an active loan by its reference.
+     */
     private function fetchActiveLoan(string $loan_reference): ?Loan
     {
         return Loan::where(Loan::COLUMN_REFERENCE, $loan_reference)
             ->where(Loan::COLUMN_STATE, Loan::STATE_ACTIVE)
             ->first();
+    }
+
+    /**
+     * Map API payload keys to DB column names and normalize values.
+     */
+    private function mapApiToAttributes(array $input): array
+    {
+        $payment = [];
+        foreach (self::COLUMN_MAPPING as $api_key => $db_key) {
+            if (!array_key_exists($api_key, $input)) {
+                continue;
+            }
+            $value = $input[$api_key];
+
+            if ($db_key === Payment::COLUMN_AMOUNT) {
+                $payment[$db_key] = is_numeric($value) ? number_format((float) $value, 2, '.', '') : null;
+            } elseif ($db_key === Payment::COLUMN_PAYMENT_DATE) {
+                try {
+                    $payment[$db_key] = Carbon::parse($value)->toDateTimeString();
+                } catch (\Throwable $e) {
+                    $payment[$db_key] = null;
+                }
+            } elseif ($db_key === Payment::COLUMN_SSN) {
+                $ssn = trim((string)$value);
+                $payment[$db_key] = $ssn === '' ? null : $ssn;
+            } else {
+                $payment[$db_key] = is_string($value) ? trim($value) : $value;
+            }
+        }
+
+        return $payment;
+    }
+
+    /**
+     * Business calculation: returns [payment_state, new_amount_paid, refund_amount|null]
+     */
+    private function computeAssignment(Loan $loan, float $amount): array
+    {
+        $current = (float) $loan[Loan::COLUMN_AMOUNT_PAID];
+        $to_pay = (float) $loan[Loan::COLUMN_AMOUNT_TO_PAY];
+        $new_amount_paid = $current + $amount;
+
+        $refund_amount = null;
+        if ($new_amount_paid > $to_pay) {
+            $payment_state = Payment::STATE_PARTIALLY_ASSIGNED;
+            $refund_amount = $new_amount_paid - $to_pay;
+        } else {
+            $payment_state = Payment::STATE_ASSIGNED;
+        }
+
+        return [$payment_state, $new_amount_paid, $refund_amount];
+    }
+
+    /**
+     * Persist payment, update loan and optionally create a refund inside a DB transaction.
+     * Returns [created_payment_model|null, created_refund_model|null, updated_loan_model]
+     */
+    private function persistSinglePayment(array $payment, Loan $loan, float $new_amount_paid, ?float $refund_amount): array
+    {
+        $created_payment = null;
+        $created_refund = null;
+
+        DB::transaction(function () use (&$created_payment, &$created_refund, $payment, $loan, $new_amount_paid, $refund_amount) {
+            // Use Eloquent create so casts/fillable/events are respected
+            $created_payment = Payment::create($payment);
+
+            // Update loan totals/state
+            $loan[Loan::COLUMN_AMOUNT_PAID] = $new_amount_paid;
+            $loan[Loan::COLUMN_STATE] = $new_amount_paid >= (float) $loan[Loan::COLUMN_AMOUNT_TO_PAY] ? Loan::STATE_PAID : $loan[Loan::COLUMN_STATE];
+            $loan->save();
+
+            // Create refund if required (amount saved as formatted string)
+            if ($refund_amount !== null && $refund_amount > 0) {
+                $created_refund = Refund::create([
+                    Refund::COLUMN_PAYMENT_REFERENCE => $payment[Payment::COLUMN_PAYMENT_REFERENCE],
+                    Refund::COLUMN_AMOUNT => number_format($refund_amount, 2, '.', ''),
+                    Refund::COLUMN_STATUS => Refund::STATUS_PENDING,
+                    Refund::COLUMN_CREATED_AT => now(),
+                    Refund::COLUMN_UPDATED_AT => now(),
+                ]);
+            }
+        });
+
+        return [$created_payment, $created_refund, $loan->fresh()];
     }
 }

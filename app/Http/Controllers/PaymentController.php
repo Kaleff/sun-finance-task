@@ -14,6 +14,6 @@ class PaymentController extends Controller
         $response_data = $service->createPayment($payment_data);
         return isset($response_data['error']) ?
             response()->json(['success' => false, 'message' => $response_data['message'], 'errors' => [$response_data['error']]], 400) :
-            response()->json(['success' => true, 'data' => $response_data['data']], 201);
+            response()->json(['success' => true, 'message' => $response_data['message'], 'data' => $response_data['data']], 201);
     }
 }
