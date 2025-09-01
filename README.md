@@ -107,6 +107,7 @@ npm run build
 4) Things that could use improvement, but would take more time
    - Additional date format handling, more secure CSV file reading
    - Params for ```csv:import```, I'm not sure if it was worth adding, if you want to change the file or chunk size, just change CONSTS in ```PaymentImportService```
+   - Logging, I wasn't sure which events should be logged or not. In case of failed payments in the batch it gets logged only in case of duplicate, and report about failed payments only comes from CSV payments, and singular failed API payment does not result in any logging or email report, just the data about which data is incorrect, since that's how API should be in case of Front-End. 
 ## Nice  to have
 
 Sail Alias in ```~/.zshrc``` or ```~/.bashrc```
