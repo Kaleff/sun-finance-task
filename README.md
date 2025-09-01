@@ -75,7 +75,32 @@ npm run build
 ```
 <img width="2004" height="411" alt="image" src="https://github.com/user-attachments/assets/a1840fbe-4d08-4e69-902e-e7b27d5099ef" />
 
-## Nice to have
+## Project structure
+### API Payments
+1) Request goes through the ```api.php``` route
+2) Then it's proccessed through ```PaymentController```
+3) Then the Controller calls ```PaymentService``` which proccesses the payment, stores the data, queues ```SendPaymentConfirmation``` or ```SendLoanPaidConfirmation``` if it satisfies requirements for notifications
+4) The ```PaymentService``` returns the processed data, the ```PaymentController``` sends out the HTTP json response.
+### CSV Imports
+1) The ```artisan csv:import``` command is ran, the ```console.php``` calls the ```PaymentImportService``` through the ```Artisan::command```
+2) The ```PaymentImportService``` reads the CSV file, extracts file contents, proccesses the data by chunks, stores all the data also by chunks.
+    - Queues ```SendPaymentConfirmation``` or ```SendLoanPaidConfirmation``` if it satisfies requirements for notifications.
+    - ```PaymentImportService import()``` method yields data back to the console, which consumes the genetor for further data output in tables.
+3) The whole CSV import is handled by chunks, the data is stored by chunk. The data to store, gets stored in one ```DB::transaction()``` for data safety and coherency.
+    - If for example mass-inserts of payments are failed, the mass-updates to loans affected by said payments will also get cancelled and not updated since the payments are not registered. 
+## Task notes
+1) The invalid payments are not stored in the database, since
+   - Code 1, Duplicates. Duplicates violate ```unique()``` constraints of ```Payment Reference```
+   - Code 3, Invalid date. If data is Invalid it couldn't be stored in the database
+   - Code 4, Loan Reference. If there's no ```Loan``` found with specified ```Loan Reference```, storing the ```Payment``` would violate ```ForeignKey``` constraint for ```Loan References``` in ```Payment table```
+2) Extra tasks
+   - Containerability: ```Laravel sail``` solution
+   - Scalability: Scalability for mass imports by utilizing chunking, generator functions and database transactions. For the ability of working with larger and larger files, and not violating memory or other resource constraints, and keeping the stored data coherent.
+   - Documentation: Documentation in this ```readme.md```
+   - Testing: Not yet, I could add this in a day or two.
+3) Things I have not done.
+   - Project Front-End as it was not specified in the task
+## Nice  to have
 
 Sail Alias in ```~/.zshrc``` or ```~/.bashrc```
 ```
