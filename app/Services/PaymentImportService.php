@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\SendFailedPaymentNotification;
 use App\Jobs\SendLoanPaidConfirmation;
 use App\Jobs\SendPaymentConfirmation;
 use App\Models\Loan;
@@ -67,6 +68,9 @@ class PaymentImportService
                 }
                 foreach ($updated_loans as $loan) {
                     SendLoanPaidConfirmation::dispatch($loan[Loan::COLUMN_ID]);
+                }
+                if($rejected_payments) {
+                    SendFailedPaymentNotification::dispatch($rejected_payments);
                 }
                 yield [
                     'data' => [
