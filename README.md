@@ -46,8 +46,8 @@ php artisan key:generate
 npm run build
 ```
 8) Make sure that the project is running at [localhost](http://localhost)
-9) Access phpMyAdmin at port 8080 [phpMyAdmin](http://localhost:8080)
-10) Access mailpit at port 8025 [Mailpit](http://localhost:8025)
+9) Access phpMyAdmin at port 8080 [phpMyAdmin](http://localhost:8080) to view databases
+10) Access mailpit at port 8025 [Mailpit](http://localhost:8025) to view emails, that are sent from the notifications/confirmations
 ## Run time commands
 1) Start queue worker (for notifications)
 ```
