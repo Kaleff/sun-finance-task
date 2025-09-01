@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Jobs\SendLoanPaidConfirmation;
+use App\Jobs\SendPaymentConfirmation;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\Refund;
@@ -56,6 +58,20 @@ class PaymentService
 
         try {
             [$created_payment, $created_refund, $updated_loan] = $this->persistSinglePayment($payment, $loan, $new_amount_paid_cents, $refund_amount_cents);
+            SendPaymentConfirmation::dispatch($payment[Payment::COLUMN_LOAN_REFERENCE], $payment[Payment::COLUMN_PAYMENT_REFERENCE]);
+            if($updated_loan->{Loan::COLUMN_STATE} === Loan::STATE_PAID) {
+                SendLoanPaidConfirmation::dispatch($loan->id);
+            }
+
+            return [
+                'data' => [
+                    'payment' => $created_payment ? $created_payment->toArray() : $payment,
+                    'loan' => $updated_loan ? $updated_loan->toArray() : $loan->toArray(),
+                    'refund' => $created_refund ? $created_refund->toArray() : ($refund_amount_cents !== null ? ['amount' => number_format($refund_amount_cents / 100, 2, '.', '')] : null)
+                ],
+                'error' => null,
+                'message' => 'Payment created successfully'
+            ];
         } catch (\Throwable $e) {
             Log::error("Error creating payment: {$e->getMessage()}", ['attrs' => $payment, 'loan_ref' => $loan_ref]);
             return [
@@ -64,16 +80,6 @@ class PaymentService
                 'message' => $e->getMessage()
             ];
         }
-
-        return [
-            'data' => [
-                'payment' => $created_payment ? $created_payment->toArray() : $payment,
-                'loan' => $updated_loan ? $updated_loan->toArray() : $loan->toArray(),
-                'refund' => $created_refund ? $created_refund->toArray() : ($refund_amount_cents !== null ? ['amount' => number_format($refund_amount_cents / 100, 2, '.', '')] : null)
-            ],
-            'error' => null,
-            'message' => 'Payment created successfully'
-        ];
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Jobs\SendLoanPaidConfirmation;
+use App\Jobs\SendPaymentConfirmation;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\Refund;
@@ -57,9 +59,15 @@ class PaymentImportService
             try {
                 ['stored_payments' => $stored_payments, 'updated_loans' => $updated_loans, 'created_refunds' => $created_refunds] = $this->createMassTransaction(
                     valid_payments: $valid_payments,
-                    loan_updates: $processed_loan_updates,
+                    loan_updates: array_values($processed_loan_updates),
                     refunds: $refunds
                 );
+                foreach ($stored_payments as $payment_row) {
+                    SendPaymentConfirmation::dispatch($payment_row[Payment::COLUMN_LOAN_REFERENCE], $payment_row[Payment::COLUMN_PAYMENT_REFERENCE]);
+                }
+                foreach ($updated_loans as $loan) {
+                    SendLoanPaidConfirmation::dispatch($loan[Loan::COLUMN_ID]);
+                }
                 yield [
                     'data' => [
                         'payments' => $stored_payments,

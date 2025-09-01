@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Loan extends Model
 {
@@ -46,4 +47,9 @@ class Loan extends Model
     protected $primaryKey = self::COLUMN_ID;
     public $incrementing = false;
     protected $keyType = 'string';
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class, foreignKey: self::COLUMN_CUSTOMER_ID, ownerKey: Customer::COLUMN_ID);
+    }
 }
