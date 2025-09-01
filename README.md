@@ -88,6 +88,9 @@ npm run build
     - ```PaymentImportService import()``` method yields data back to the console, which consumes the genetor for further data output in tables.
 3) The whole CSV import is handled by chunks, the data is stored by chunk. The data to store, gets stored in one ```DB::transaction()``` for data safety and coherency.
     - If for example mass-inserts of payments are failed, the mass-updates to loans affected by said payments will also get cancelled and not updated since the payments are not registered. 
+### Data location
+1) The csv file is stored in ```storage\external\payments.csv```
+2) The logs could be read in ```storage\logs\laravel.log```
 ## Task notes
 1) The invalid payments are not stored in the database, since
    - Code 1, Duplicates. Duplicates violate ```unique()``` constraints of ```Payment Reference```
