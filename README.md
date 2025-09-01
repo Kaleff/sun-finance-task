@@ -36,7 +36,7 @@ php artisan key:generate
 ./vendor/bin/sail up
 ```
 
-6) Run the migrations and seeders, 
+6) Run the migrations and seeders.
 ```
 ./vendor/bin/sail artisan migrate:refresh --seed
 ```
@@ -46,7 +46,7 @@ php artisan key:generate
 npm run build
 ```
 8) Make sure that the project is running at [localhost](http://localhost)
-9) Access phpMyAdmin at port 8080 [mailpit](http://localhost:8080)
+9) Access phpMyAdmin at port 8080 [phpMyAdmin](http://localhost:8080)
 
 ## Nice to have
 
