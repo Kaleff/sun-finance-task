@@ -73,6 +73,8 @@ npm run build
         "refId": "dda8b637-b2e8-4f79-a4af-d1d68e266bf5"
     }
 ```
+<img width="2004" height="411" alt="image" src="https://github.com/user-attachments/assets/a1840fbe-4d08-4e69-902e-e7b27d5099ef" />
+
 ## Nice to have
 
 Sail Alias in ```~/.zshrc``` or ```~/.bashrc```
