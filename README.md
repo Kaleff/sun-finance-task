@@ -91,6 +91,7 @@ npm run build
 ### Data location
 1) The csv file is stored in ```storage\external\payments.csv```
 2) The logs could be read in ```storage\logs\laravel.log```
+3) The data about loans and customers, which were provided by the task could be found in the ```LoanSeeder``` and ```CustomerSeeder``` 
 ## Task notes
 1) The invalid payments are not stored in the database, since
    - Code 1, Duplicates. Duplicates violate ```unique()``` constraints of ```Payment Reference```
