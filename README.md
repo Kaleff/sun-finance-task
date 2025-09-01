@@ -47,7 +47,32 @@ npm run build
 ```
 8) Make sure that the project is running at [localhost](http://localhost)
 9) Access phpMyAdmin at port 8080 [phpMyAdmin](http://localhost:8080)
-
+10) Access mailpit at port 8025 [Mailpit](http://localhost:8025)
+## Run time commands
+1) Start queue worker (for notifications)
+```
+./vendor/bin/sail artisan queue:work --sleep=3 --tries=3
+```
+2) Mass import for CSV files
+```
+./vendor/bin/sail artisan csv:import
+```
+3) Get payments by date
+```
+./vendor/bin/sail artisan report --date=YYYY-MM-DD
+./vendor/bin/sail artisan report --date=2023-01-10
+```
+4) To test API endpoint for storing single payment, utilize POSTMAN, using data provided in task description
+```
+    {
+        "firstname": "Lorem",
+        "lastname": "Ipsum",
+        "paymentDate": "2022-12-12T15:19:21+00:00",
+        "amount": "99.99",
+        "description": "Lorem ipsum dolorLN20221212 sit amet...",
+        "refId": "dda8b637-b2e8-4f79-a4af-d1d68e266bf5"
+    }
+```
 ## Nice to have
 
 Sail Alias in ```~/.zshrc``` or ```~/.bashrc```
