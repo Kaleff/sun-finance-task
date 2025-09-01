@@ -79,12 +79,12 @@ npm run build
 ### API Payments
 1) Request goes through the ```api.php``` route
 2) Then it's proccessed through ```PaymentController```
-3) Then the Controller calls ```PaymentService``` which proccesses the payment, stores the data, queues ```SendPaymentConfirmation``` or ```SendLoanPaidConfirmation``` if it satisfies requirements for notifications
+3) Then the Controller calls ```PaymentService``` which proccesses the payment, stores the data, queues ```SendPaymentConfirmation```, ```SendLoanPaidConfirmation``` or ```SendFailedPaymentNotification``` if it satisfies requirements for notifications
 4) The ```PaymentService``` returns the processed data, the ```PaymentController``` sends out the HTTP json response.
 ### CSV Imports
 1) The ```artisan csv:import``` command is ran, the ```console.php``` calls the ```PaymentImportService``` through the ```Artisan::command```
 2) The ```PaymentImportService``` reads the CSV file, extracts file contents, proccesses the data by chunks, stores all the data also by chunks.
-    - Queues ```SendPaymentConfirmation``` or ```SendLoanPaidConfirmation``` if it satisfies requirements for notifications.
+    - Queues ```SendPaymentConfirmation```, ```SendLoanPaidConfirmation``` or ```SendFailedPaymentNotification``` if it satisfies requirements for notifications.
     - ```PaymentImportService import()``` method yields data back to the console, which consumes the genetor for further data output in tables.
 3) The whole CSV import is handled by chunks, the data is stored by chunk. The data to store, gets stored in one ```DB::transaction()``` for data safety and coherency.
     - If for example mass-inserts of payments are failed, the mass-updates to loans affected by said payments will also get cancelled and not updated since the payments are not registered. 
