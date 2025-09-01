@@ -77,7 +77,7 @@ npm run build
 
 ## Project structure
 ### API Payments
-1) Request goes through the ```api.php``` route
+1) Request goes through the ```api.php``` route ```api/payment/store```
 2) Then it's proccessed through ```PaymentController```, where it's first validated by ```StorePaymentRequest```, and then goes to the ```store() method```
 3) Then the Controller calls ```PaymentService``` which proccesses the payment, stores the data, queues ```SendPaymentConfirmation```, ```SendLoanPaidConfirmation``` or ```SendFailedPaymentNotification``` if it satisfies requirements for notifications
 4) The ```PaymentService``` returns the processed data, the ```PaymentController``` sends out the HTTP json response.
@@ -104,6 +104,9 @@ npm run build
    - Testing: Not yet, I could add this in a day or two.
 3) Things I have not done.
    - Project Front-End as it was not specified in the task
+4) Things that could use improvement, but would take more time
+   - Additional date format handling, more secure CSV file reading
+   - Params for ```csv:import```, I'm not sure if it was worth adding, if you want to change the file or chunk size, just change CONSTS in ```PaymentImportService```
 ## Nice  to have
 
 Sail Alias in ```~/.zshrc``` or ```~/.bashrc```
