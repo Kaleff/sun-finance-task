@@ -78,7 +78,7 @@ npm run build
 ## Project structure
 ### API Payments
 1) Request goes through the ```api.php``` route
-2) Then it's proccessed through ```PaymentController```
+2) Then it's proccessed through ```PaymentController```, where it's first validated by ```StorePaymentRequest```, and then goes to the ```store() method```
 3) Then the Controller calls ```PaymentService``` which proccesses the payment, stores the data, queues ```SendPaymentConfirmation```, ```SendLoanPaidConfirmation``` or ```SendFailedPaymentNotification``` if it satisfies requirements for notifications
 4) The ```PaymentService``` returns the processed data, the ```PaymentController``` sends out the HTTP json response.
 ### CSV Imports
