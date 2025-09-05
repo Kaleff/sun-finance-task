@@ -39,7 +39,7 @@ class PaymentServiceTest extends TestCase
         $this->assertEquals(Loan::STATE_PAID, $loan->state);
 
         $this->assertDatabaseHas('refunds', [
-            'payment_reference' => 'test-ref-1',
+            'payment_reference' => $payload['refId'],
             'amount' => '10.50',
             'status' => Refund::STATUS_PENDING,
         ]);
