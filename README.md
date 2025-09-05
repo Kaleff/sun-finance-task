@@ -75,6 +75,11 @@ npm run build
 ```
 <img width="2004" height="411" alt="image" src="https://github.com/user-attachments/assets/a1840fbe-4d08-4e69-902e-e7b27d5099ef" />
 
+5) Run tests
+```
+./vendor/bin/sail artisan test
+```
+
 ## Project structure
 ### API Payments
 1) Request goes through the ```api.php``` route ```api/payment/store```
@@ -101,7 +106,7 @@ npm run build
    - Containerability: ```Laravel sail``` solution
    - Scalability: Scalability for mass imports by utilizing chunking, generator functions and database transactions. For the ability of working with larger and larger files, and not violating memory or other resource constraints, and keeping the stored data coherent.
    - Documentation: Documentation in this ```readme.md```
-   - Testing: Not yet, I could add this in a day or two.
+   - Testing: Feature testing implemented
 3) Things I have not done.
    - Project Front-End as it was not specified in the task
 4) Things that could use improvement, but would take more time
