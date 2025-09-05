@@ -21,6 +21,16 @@ return new class extends Migration
             $table->string(Customer::COLUMN_PHONE)->unique()->nullable();
             $table->timestamps();
         });
+
+        Schema::create(Customer::CUSTOMERS_TABLE_TESTING, function (Blueprint $table) {
+            $table->uuid(Customer::COLUMN_ID)->primary();
+            $table->string(Customer::COLUMN_FIRST_NAME);
+            $table->string(Customer::COLUMN_LAST_NAME);
+            $table->string(Customer::COLUMN_SSN);
+            $table->string(Customer::COLUMN_EMAIL)->unique()->nullable();
+            $table->string(Customer::COLUMN_PHONE)->unique()->nullable();
+            $table->timestamps();
+        });
         // I didn't create indexes for the other columns since the data is not really requested yet.
     }
 
@@ -30,5 +40,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists(Customer::CUSTOMERS_TABLE);
+        Schema::dropIfExists(Customer::CUSTOMERS_TABLE_TESTING);
     }
 };

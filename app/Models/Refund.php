@@ -11,6 +11,7 @@ class Refund extends Model
     public const STATUS_FAILED = 'FAILED';
 
     public const REFUNDS_TABLE = 'refunds';
+    public const REFUNDS_TABLE_TESTING = 'testing.refunds';
 
     public const COLUMN_PAYMENT_REFERENCE = 'payment_reference';
     public const COLUMN_AMOUNT = 'amount';

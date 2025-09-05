@@ -2,15 +2,19 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Loan extends Model
 {
+    use HasFactory;
+
     public const STATE_ACTIVE = 'ACTIVE';
     public const STATE_PAID = 'PAID';
 
     public const LOANS_TABLE = 'loans';
+    public const LOANS_TABLE_TESTING = 'testing.loans';
 
     public const COLUMN_ID = 'id';
     public const COLUMN_CUSTOMER_ID = 'customer_id';

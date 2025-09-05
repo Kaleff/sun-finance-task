@@ -14,6 +14,7 @@ class Payment extends Model
     public const SOURCE_CSV = 'csv';
 
     public const PAYMENTS_TABLE = 'payments';
+    public const PAYMENTS_TABLE_TESTING = 'testing.payments';
 
     public const COLUMN_ID = 'id';
     public const COLUMN_PAYER_NAME = 'payer_name';

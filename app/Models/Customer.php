@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
 {
+    use HasFactory;
+
     public const CUSTOMERS_TABLE = 'customers';
+    public const CUSTOMERS_TABLE_TESTING = 'testing.customers';
 
     public const COLUMN_ID = 'id';
     public const COLUMN_FIRST_NAME = 'first_name';
