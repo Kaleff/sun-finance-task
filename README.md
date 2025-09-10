@@ -23,18 +23,18 @@ cp .env.example .env
 docker run --rm -v ${PWD}:/app composer install
 ```
 
-4) Generate APP_KEY for .env file
+4) Run the application using SAIL, make sure the docker engine is running
+
+```
+./vendor/bin/sail up
+```
+
+5) Generate APP_KEY for .env file
 
 ```
 ./vendor/bin/sail artisan key:generate
 ```
 
-
-5) Run the application using SAIL, make sure the docker engine is running
-
-```
-./vendor/bin/sail up
-```
 
 6) Run the migrations and seeders.
 ```
