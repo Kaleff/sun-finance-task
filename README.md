@@ -20,7 +20,7 @@ cp .env.example .env
 3) Run the composer installation in the project directory
 
 ```
-./vendor/bin/sail composer install
+docker run --rm -v ${PWD}:/app composer install
 ```
 
 4) Generate APP_KEY for .env file
