@@ -20,13 +20,13 @@ cp .env.example .env
 3) Run the composer installation in the project directory
 
 ```
-composer install
+./vendor/bin/sail composer install
 ```
 
 4) Generate APP_KEY for .env file
 
 ```
-php artisan key:generate
+./vendor/bin/sail artisan key:generate
 ```
 
 
